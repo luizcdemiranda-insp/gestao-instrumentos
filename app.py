@@ -5,23 +5,23 @@ from datetime import datetime
 import smtplib
 from email.message import EmailMessage
 
-# --- CONFIGURAÇÃO E CSS (MODO COMPACTO) ---
+# --- CONFIGURAÇÃO E CSS ---
 st.set_page_config(page_title="🛡️ Gestão de Calibração", layout="wide")
 
 st.markdown("""
     <style>
+    /* Cards mais limpos e legíveis */
     .card-compact { 
-        padding: 12px; border-radius: 8px; margin: 5px; 
-        border-left: 5px solid #ccc; font-size: 0.9em;
-        background-color: #f8f9fa; color: #333;
+        padding: 15px; border-radius: 8px; margin: 8px; 
+        border-left: 6px solid #ccc; font-size: 0.95em;
+        background-color: #ffffff; color: #2c3e50;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
-    .vencido { border-color: #ff6b6b; background-color: #fff5f5; }
-    .proximo { border-color: #fcc419; background-color: #fff9db; }
-    .stMetric { background: #f1f3f5; padding: 10px; border-radius: 8px; }
+    .vencido { border-color: #e74c3c; }
+    .proximo { border-color: #f1c40f; }
     </style>
 """, unsafe_allow_html=True)
 
-# URL CSV da Planilha
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1MQ1i0fZ_uV_lE9EZA92YOJ-jMYuPxppQ9qKql1_E5bY/export?format=csv&gid=0"
 
 @st.cache_data(ttl=600)
@@ -40,12 +40,16 @@ def processar_dados(df):
     df['STATUS'] = df['DIAS_RESTANTES'].apply(lambda d: "VENCIDO" if d < 0 else ("PRÓXIMO VENCIMENTO" if d <= 30 else "NO PRAZO"))
     return df
 
-def enviar_alerta(destino, instrumento, data):
+def enviar_email_lote(destino, lista_instrumentos):
     msg = EmailMessage()
-    msg['Subject'] = f"🚨 Alerta de Calibração: {instrumento}"
+    msg['Subject'] = "🚨 ALERTA: Calibração de Instrumentos"
     msg['From'] = st.secrets["email"]["email_usuario"]
     msg['To'] = destino
-    msg.set_content(f"O item {instrumento} vence em {data}.")
+    conteudo = "Os seguintes instrumentos estão fora do prazo ou próximos do vencimento:\n\n"
+    for item in lista_instrumentos:
+        conteudo += f"- {item['Desc']}: Vence em {item['Data']}\n"
+    msg.set_content(conteudo)
+    
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
         smtp.send_message(msg)
@@ -59,37 +63,39 @@ if menu == "Visão Geral":
     st.dataframe(df, use_container_width=True)
 
 elif menu == "⚠️ Vencidos":
+    st.title("⚠️ Gestão de Prazos")
     df_vencidos = df[df['STATUS'].isin(['VENCIDO', 'PRÓXIMO VENCIMENTO'])].copy()
     
-    # Contador de destaque
-    st.title("⚠️ Gestão de Prazos")
-    col_kpi1, col_kpi2 = st.columns([1, 4])
-    col_kpi1.metric("Pendentes", len(df_vencidos))
+    # Contador superior
+    st.metric("Instrumentos fora do prazo de calibração", len(df_vencidos))
     
     if df_vencidos.empty:
         st.success("Tudo em dia!")
     else:
-        email_geral = st.sidebar.text_input("E-mail destino (lote):")
-        if st.sidebar.button("Disparar Selecionados"):
-            for idx in st.session_state.get('selecionados', []):
-                row = df_vencidos.loc[idx]
-                enviar_alerta(email_geral, row['Descrição'], str(row['DATA_CALIBRACAO'])[:10])
-            st.toast("Alertas enviados!")
+        email_geral = st.sidebar.text_input("E-mail para envio em lote:")
+        if st.sidebar.button("Enviar e-mail para selecionados"):
+            selecionados = [idx for idx in st.session_state.get('sel_map', []) if st.session_state.get(f"check_{idx}")]
+            if selecionados and email_geral:
+                lista = [{'Desc': df_vencidos.loc[i, 'Descrição'], 'Data': df_vencidos.loc[i, 'DATA_CALIBRACAO'].strftime('%d/%m/%Y')} for i in selecionados]
+                try:
+                    enviar_email_lote(email_geral, lista)
+                    st.toast("E-mail único enviado com sucesso!")
+                except Exception as e: st.error(f"Erro: {e}")
+            else: st.warning("Selecione itens e digite um e-mail.")
 
-        # Grid de cards compactos (3 colunas)
+        # Grid de cards
         cols = st.columns(3)
-        if 'selecionados' not in st.session_state: st.session_state.selecionados = []
-        
+        st.session_state.sel_map = df_vencidos.index
         for i, (idx, row) in enumerate(df_vencidos.iterrows()):
             with cols[i % 3]:
+                # Checkbox acima do card
+                st.checkbox("Selecionar", key=f"check_{idx}")
                 tipo = "vencido" if row['STATUS'] == "VENCIDO" else "proximo"
+                data_formatada = row['DATA_CALIBRACAO'].strftime('%d/%m/%Y') if pd.notna(row['DATA_CALIBRACAO']) else "N/A"
                 st.markdown(f"""
                     <div class='card-compact {tipo}'>
                         <strong>{row['Descrição'][:30]}...</strong><br>
-                        Código: {row['Código']}<br>
-                        Vencimento: {str(row['DATA_CALIBRACAO'])[:10]}
+                        <small>Código: {row['Código']}<br>
+                        Vencimento: {data_formatada}</small>
                     </div>
                 """, unsafe_allow_html=True)
-                if st.checkbox("Selecionar", key=f"sel_{idx}"):
-                    if idx not in st.session_state.selecionados: st.session_state.selecionados.append(idx)
-                elif idx in st.session_state.selecionados: st.session_state.selecionados.remove(idx)
