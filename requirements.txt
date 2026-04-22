@@ -1,4 +1,5 @@
 streamlit
 pandas
 python-dateutil
-streamlit-gsheets
+gspread
+oauth2client
