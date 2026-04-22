@@ -5,16 +5,16 @@ from datetime import datetime
 import smtplib
 from email.message import EmailMessage
 
-# --- CONFIGURAÇÃO E MOTOR VISUAL ---
+# --- CONFIGURAÇÃO E DESIGN SYSTEM (NAVY & NEON) ---
 st.set_page_config(page_title="🛠️ Monitoramento", layout="wide")
 
 st.markdown("""
     <style>
-    /* 1. PALETA BASE (Azul Marinho Profundo) */
+    /* PALETA E FUNDO */
     .stApp { background-color: #0b132b; color: #ffffff; }
     section[data-testid="stSidebar"] { background-color: #1c2541; }
     
-    /* 2. MENU ESTILO MERCÚRIO (Botões Blindados) */
+    /* MENU ESTILO MERCÚRIO */
     div[role="radiogroup"] > label > div:first-child { display: none; }
     div[role="radiogroup"] > label {
         background-color: #2b3a55; border: 1px solid #3a506b; padding: 12px 15px;
@@ -28,26 +28,30 @@ st.markdown("""
         box-shadow: 0 0 12px rgba(255, 140, 0, 0.4);
     }
     
-    /* 3. CARDS COMPACTOS */
+    /* KPI MODERNO (FONTE VIVA) */
+    .kpi-container {
+        background-color: #1c2541; padding: 20px; border-radius: 15px;
+        text-align: center; border: 1px solid #3a506b;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 20px;
+    }
+    .kpi-value {
+        font-family: 'Inter', sans-serif; font-size: 64px; font-weight: 800;
+        line-height: 1; margin: 10px 0;
+        text-shadow: 0 0 15px var(--glow-color);
+    }
+    .kpi-label { font-size: 14px; color: #a1b0c0; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* CARDS COMPACTOS */
     .card-compact { 
         padding: 15px; border-radius: 8px; margin: 8px; 
         border-left: 6px solid #ccc; font-size: 0.95em;
         background-color: #1c2541; color: #e0e6ed;
         box-shadow: 2px 2px 8px rgba(0,0,0,0.5);
-        height: 125px; transition: transform 0.2s;
+        height: 125px;
     }
-    .card-compact:hover { transform: scale(1.02); }
-    
-    /* Cores de Status (Vermelho voltou para os Vencidos) */
-    .vencido { border-color: #ff4b4b; } /* Vermelho alerta */
-    .proximo { border-color: #f1c40f; } /* Amarelo atenção */
-    .em-dia { border-color: #2ecc71; }  /* Verde apto */
-    
-    /* Ajustes Gerais */
-    [data-testid="stMetricValue"] { font-size: 28px; color: #ffffff; }
-    [data-testid="stMetricLabel"] { color: #a1b0c0; }
-    h1, h2, h3 { color: #ffffff; }
-    hr { border-color: #3a506b; }
+    .vencido { border-color: #ff4b4b; --glow-color: rgba(255, 75, 75, 0.6); }
+    .proximo { border-color: #f1c40f; --glow-color: rgba(241, 196, 15, 0.6); }
+    .aptos { border-color: #2ecc71; --glow-color: rgba(46, 204, 113, 0.6); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -75,20 +79,27 @@ def processar_dados(df):
         return "NO PRAZO"
     
     df['STATUS'] = df['DIAS_RESTANTES'].apply(rotular_status)
-    # Coluna auxiliar de data formatada em texto para facilitar o filtro
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna("N/A")
     return df
+
+def render_kpi(label, value, color_class):
+    color = "#2ecc71" if color_class == "aptos" else ("#ff4b4b" if color_class == "vencido" else "#f1c40f")
+    html = f"""
+    <div class="kpi-container {color_class}">
+        <div class="kpi-label">{label}</div>
+        <div class="kpi-value" style="color: {color};">{value}</div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 def enviar_email_lote(destino, lista_instrumentos):
     msg = EmailMessage()
     msg['Subject'] = "🚨 ALERTA: Monitoramento de Instrumentos"
     msg['From'] = st.secrets["email"]["email_usuario"]
     msg['To'] = destino
-    
-    conteudo = "Relatório de Instrumentos com Pendência de Calibração:\n\n"
+    conteudo = "Relatório de Pendências:\n\n"
     for item in lista_instrumentos:
         conteudo += f"- {item['Desc']} (Cód: {item['Cod']}) | Vencimento: {item['Data']}\n"
-    
     msg.set_content(conteudo)
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
@@ -98,102 +109,90 @@ def enviar_email_lote(destino, lista_instrumentos):
 st.sidebar.title("🛠️ Monitoramento de Instrumentos")
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-# Nova ordem e nomenclatura das abas
-menu = st.sidebar.radio("", ["✅ INSTRUMENTOS APTOS", "⚠️ VENCIDOS", "📊 Visão Geral"], index=0, label_visibility="collapsed")
+menu = st.sidebar.radio("", ["✅ INSTRUMENTOS APTOS", "🔴 VENCIDOS", "⚠️ PRÓXIMOS DE VENCER", "📊 VISÃO GERAL"], index=0, label_visibility="collapsed")
 
-try:
-    df_raw = carregar_dados()
-    df = processar_dados(df_raw)
-except Exception as e:
-    st.error(f"Erro ao carregar dados. Detalhe: {e}")
-    st.stop()
+df = processar_dados(carregar_dados())
 
+# Lógica de Limpar Filtros
+def limpar_filtros():
+    for key in st.session_state.keys():
+        if key.startswith("f_"): st.session_state[key] = ""
 
-# --- PÁGINA 1: INSTRUMENTOS APTOS ---
+# --- PÁGINA: INSTRUMENTOS APTOS ---
 if "APTOS" in menu:
     st.title("✅ INSTRUMENTOS APTOS")
-    df_em_dia = df[df['STATUS'] == 'NO PRAZO'].copy()
+    df_pg = df[df['STATUS'] == 'NO PRAZO'].copy()
     
-    # Sistema de Filtros
-    c1, c2, c3 = st.columns(3)
-    f_nome = c1.text_input("🔍 Buscar por Nome:", key="f1_nome")
-    f_cod = c2.text_input("🔍 Buscar por Código:", key="f1_cod")
-    f_data = c3.text_input("📅 Filtrar Vencimento (ex: 2026 ou 05/10):", key="f1_data")
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+    f_nome = c1.text_input("🔍 Nome", key="f_apt_nome")
+    f_cod = c2.text_input("🔍 Código", key="f_apt_cod")
+    f_data = c3.text_input("📅 Vencimento", key="f_apt_data")
+    c4.markdown("<br>", unsafe_allow_html=True)
+    c4.button("🧹 Limpar", on_click=limpar_filtros)
+
+    if f_nome: df_pg = df_pg[df_pg['Descrição'].str.contains(f_nome, case=False, na=False)]
+    if f_cod: df_pg = df_pg[df_pg['Código'].str.contains(f_cod, case=False, na=False)]
+    if f_data: df_pg = df_pg[df_pg['DATA_STR'].str.contains(f_data, case=False, na=False)]
+
+    render_kpi("INSTRUMENTOS APTOS PARA USO", len(df_pg), "aptos")
+
+    cols = st.columns(3)
+    for i, (idx, row) in enumerate(df_pg.iterrows()):
+        with cols[i % 3]:
+            st.markdown(f"<div class='card-compact em-dia'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
+
+# --- PÁGINA: VENCIDOS ---
+elif "🔴 VENCIDOS" in menu:
+    st.title("🔴 INSTRUMENTOS VENCIDOS")
+    df_pg = df[df['STATUS'] == 'VENCIDO'].copy()
     
-    if f_nome: df_em_dia = df_em_dia[df_em_dia['Descrição'].str.contains(f_nome, case=False, na=False)]
-    if f_cod: df_em_dia = df_em_dia[df_em_dia['Código'].str.contains(f_cod, case=False, na=False)]
-    if f_data: df_em_dia = df_em_dia[df_em_dia['DATA_STR'].str.contains(f_data, case=False, na=False)]
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+    f_nome = c1.text_input("🔍 Nome", key="f_ven_nome")
+    f_cod = c2.text_input("🔍 Código", key="f_ven_cod")
+    f_data = c3.text_input("📅 Vencimento", key="f_ven_data")
+    c4.markdown("<br>", unsafe_allow_html=True)
+    c4.button("🧹 Limpar", on_click=limpar_filtros)
 
-    st.metric("Instrumentos aptos para uso (Filtrados)", len(df_em_dia))
-    st.markdown("<hr>", unsafe_allow_html=True)
+    if f_nome: df_pg = df_pg[df_pg['Descrição'].str.contains(f_nome, case=False, na=False)]
+    if f_cod: df_pg = df_pg[df_pg['Código'].str.contains(f_cod, case=False, na=False)]
+    if f_data: df_pg = df_pg[df_pg['DATA_STR'].str.contains(f_data, case=False, na=False)]
 
-    if df_em_dia.empty:
-        st.info("Nenhum instrumento encontrado com esses filtros.")
-    else:
-        cols = st.columns(3)
-        for i, (idx, row) in enumerate(df_em_dia.iterrows()):
-            with cols[i % 3]:
-                st.markdown(f"""
-                    <div class='card-compact em-dia'>
-                        <strong>{row['Descrição'][:40]}</strong><br>
-                        <small style='color:#a1b0c0;'>Cód: {row['Código']}<br>
-                        Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small>
-                    </div>
-                """, unsafe_allow_html=True)
+    render_kpi("INSTRUMENTOS FORA DO PRAZO", len(df_pg), "vencido")
 
-# --- PÁGINA 2: VENCIDOS ---
-elif "VENCIDOS" in menu:
-    st.title("⚠️ VENCIDOS E PRÓXIMOS")
-    df_vencidos = df[df['STATUS'].isin(['VENCIDO', 'PRÓXIMO VENCIMENTO'])].copy()
+    email_destino = st.sidebar.text_input("E-mail para Alerta:")
+    if st.sidebar.button("Disparar E-mail"):
+        selecionados = [idx for idx in df_pg.index if st.session_state.get(f"ck_{idx}")]
+        if selecionados and email_destino:
+            lista = [{'Desc': df_pg.loc[i, 'Descrição'], 'Cod': df_pg.loc[i, 'Código'], 'Data': df_pg.loc[i, 'DATA_STR']} for i in selecionados]
+            enviar_email_lote(email_destino, lista)
+            st.success("Alerta enviado!")
+
+    cols = st.columns(3)
+    for i, (idx, row) in enumerate(df_pg.iterrows()):
+        with cols[i % 3]:
+            st.checkbox("Selecionar", key=f"ck_{idx}")
+            st.markdown(f"<div class='card-compact vencido'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
+
+# --- PÁGINA: PRÓXIMOS ---
+elif "PRÓXIMOS" in menu:
+    st.title("⚠️ PRÓXIMOS DE VENCER (30 DIAS)")
+    df_pg = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'].copy()
     
-    # Sistema de Filtros
-    c1, c2, c3 = st.columns(3)
-    f_nome = c1.text_input("🔍 Buscar por Nome:", key="f2_nome")
-    f_cod = c2.text_input("🔍 Buscar por Código:", key="f2_cod")
-    f_data = c3.text_input("📅 Filtrar Vencimento (ex: 2026 ou 05/10):", key="f2_data")
-    
-    if f_nome: df_vencidos = df_vencidos[df_vencidos['Descrição'].str.contains(f_nome, case=False, na=False)]
-    if f_cod: df_vencidos = df_vencidos[df_vencidos['Código'].str.contains(f_cod, case=False, na=False)]
-    if f_data: df_vencidos = df_vencidos[df_vencidos['DATA_STR'].str.contains(f_data, case=False, na=False)]
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+    f_nome = c1.text_input("🔍 Nome", key="f_px_nome")
+    f_cod = c2.text_input("🔍 Código", key="f_px_cod")
+    f_data = c3.text_input("📅 Vencimento", key="f_px_data")
+    c4.markdown("<br>", unsafe_allow_html=True)
+    c4.button("🧹 Limpar", on_click=limpar_filtros)
 
-    st.metric("Instrumentos fora do prazo (Filtrados)", len(df_vencidos))
-    st.markdown("<hr>", unsafe_allow_html=True)
-    
-    if df_vencidos.empty:
-        st.success("Tudo limpo! Nenhum instrumento vencido ou próximo encontrado com esses filtros.")
-    else:
-        # Bloco de Disparo em Lote
-        with st.sidebar.expander("📧 Disparo de Alerta", expanded=True):
-            email_destino = st.text_input("E-mail do responsável:")
-            if st.button("Enviar Alerta aos Selecionados"):
-                selecionados = [idx for idx in df_vencidos.index if st.session_state.get(f"check_{idx}")]
-                if selecionados and email_destino:
-                    lista = [{'Desc': df_vencidos.loc[i, 'Descrição'], 
-                              'Cod': df_vencidos.loc[i, 'Código'],
-                              'Data': df_vencidos.loc[i, 'DATA_STR']} for i in selecionados]
-                    try:
-                        enviar_email_lote(email_destino, lista)
-                        st.success("E-mail enviado com sucesso!")
-                    except Exception as e: st.error(f"Erro no envio: {e}")
-                else: st.warning("Selecione itens na tela e informe o e-mail.")
+    render_kpi("ATENÇÃO: VENCIMENTO PRÓXIMO", len(df_pg), "proximo")
 
-        # Renderização dos Cards Vencidos
-        cols = st.columns(3)
-        for i, (idx, row) in enumerate(df_vencidos.iterrows()):
-            with cols[i % 3]:
-                st.checkbox("Selecionar", key=f"check_{idx}")
-                tipo_classe = "vencido" if row['STATUS'] == "VENCIDO" else "proximo"
-                st.markdown(f"""
-                    <div class='card-compact {tipo_classe}'>
-                        <strong>{row['Descrição'][:40]}</strong><br>
-                        <small style='color:#a1b0c0;'>Cód: {row['Código']}<br>
-                        Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small>
-                    </div>
-                """, unsafe_allow_html=True)
+    cols = st.columns(3)
+    for i, (idx, row) in enumerate(df_pg.iterrows()):
+        with cols[i % 3]:
+            st.markdown(f"<div class='card-compact proximo'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
 
-# --- PÁGINA 3: VISÃO GERAL ---
-elif "Visão Geral" in menu:
-    st.title("📊 Status Geral do Inventário")
-    # Pequeno ajuste para a tabela ficar bonita (remover colunas desnecessárias se quiser)
-    df_tabela = df.drop(columns=['DATA_STR'], errors='ignore')
-    st.dataframe(df_tabela, use_container_width=True)
+# --- PÁGINA: VISÃO GERAL ---
+elif "VISÃO GERAL" in menu:
+    st.title("📊 STATUS GERAL DO INVENTÁRIO")
+    st.dataframe(df.drop(columns=['DATA_STR']), use_container_width=True)
