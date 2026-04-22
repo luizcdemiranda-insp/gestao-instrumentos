@@ -87,3 +87,113 @@ def enviar_email_lote(destino, lista_instrumentos):
     
     conteudo = "Relatório de Instrumentos com Pendência de Calibração:\n\n"
     for item in lista_instrumentos:
+        conteudo += f"- {item['Desc']} (Cód: {item['Cod']}) | Vencimento: {item['Data']}\n"
+    
+    msg.set_content(conteudo)
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
+        smtp.send_message(msg)
+
+# --- NAVEGAÇÃO ---
+st.sidebar.title("🛠️ Monitoramento de Instrumentos")
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+# Nova ordem e nomenclatura das abas
+menu = st.sidebar.radio("", ["✅ INSTRUMENTOS APTOS", "⚠️ VENCIDOS", "📊 Visão Geral"], index=0, label_visibility="collapsed")
+
+try:
+    df_raw = carregar_dados()
+    df = processar_dados(df_raw)
+except Exception as e:
+    st.error(f"Erro ao carregar dados. Detalhe: {e}")
+    st.stop()
+
+
+# --- PÁGINA 1: INSTRUMENTOS APTOS ---
+if "APTOS" in menu:
+    st.title("✅ INSTRUMENTOS APTOS")
+    df_em_dia = df[df['STATUS'] == 'NO PRAZO'].copy()
+    
+    # Sistema de Filtros
+    c1, c2, c3 = st.columns(3)
+    f_nome = c1.text_input("🔍 Buscar por Nome:", key="f1_nome")
+    f_cod = c2.text_input("🔍 Buscar por Código:", key="f1_cod")
+    f_data = c3.text_input("📅 Filtrar Vencimento (ex: 2026 ou 05/10):", key="f1_data")
+    
+    if f_nome: df_em_dia = df_em_dia[df_em_dia['Descrição'].str.contains(f_nome, case=False, na=False)]
+    if f_cod: df_em_dia = df_em_dia[df_em_dia['Código'].str.contains(f_cod, case=False, na=False)]
+    if f_data: df_em_dia = df_em_dia[df_em_dia['DATA_STR'].str.contains(f_data, case=False, na=False)]
+
+    st.metric("Instrumentos aptos para uso (Filtrados)", len(df_em_dia))
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    if df_em_dia.empty:
+        st.info("Nenhum instrumento encontrado com esses filtros.")
+    else:
+        cols = st.columns(3)
+        for i, (idx, row) in enumerate(df_em_dia.iterrows()):
+            with cols[i % 3]:
+                st.markdown(f"""
+                    <div class='card-compact em-dia'>
+                        <strong>{row['Descrição'][:40]}</strong><br>
+                        <small style='color:#a1b0c0;'>Cód: {row['Código']}<br>
+                        Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small>
+                    </div>
+                """, unsafe_allow_html=True)
+
+# --- PÁGINA 2: VENCIDOS ---
+elif "VENCIDOS" in menu:
+    st.title("⚠️ VENCIDOS E PRÓXIMOS")
+    df_vencidos = df[df['STATUS'].isin(['VENCIDO', 'PRÓXIMO VENCIMENTO'])].copy()
+    
+    # Sistema de Filtros
+    c1, c2, c3 = st.columns(3)
+    f_nome = c1.text_input("🔍 Buscar por Nome:", key="f2_nome")
+    f_cod = c2.text_input("🔍 Buscar por Código:", key="f2_cod")
+    f_data = c3.text_input("📅 Filtrar Vencimento (ex: 2026 ou 05/10):", key="f2_data")
+    
+    if f_nome: df_vencidos = df_vencidos[df_vencidos['Descrição'].str.contains(f_nome, case=False, na=False)]
+    if f_cod: df_vencidos = df_vencidos[df_vencidos['Código'].str.contains(f_cod, case=False, na=False)]
+    if f_data: df_vencidos = df_vencidos[df_vencidos['DATA_STR'].str.contains(f_data, case=False, na=False)]
+
+    st.metric("Instrumentos fora do prazo (Filtrados)", len(df_vencidos))
+    st.markdown("<hr>", unsafe_allow_html=True)
+    
+    if df_vencidos.empty:
+        st.success("Tudo limpo! Nenhum instrumento vencido ou próximo encontrado com esses filtros.")
+    else:
+        # Bloco de Disparo em Lote
+        with st.sidebar.expander("📧 Disparo de Alerta", expanded=True):
+            email_destino = st.text_input("E-mail do responsável:")
+            if st.button("Enviar Alerta aos Selecionados"):
+                selecionados = [idx for idx in df_vencidos.index if st.session_state.get(f"check_{idx}")]
+                if selecionados and email_destino:
+                    lista = [{'Desc': df_vencidos.loc[i, 'Descrição'], 
+                              'Cod': df_vencidos.loc[i, 'Código'],
+                              'Data': df_vencidos.loc[i, 'DATA_STR']} for i in selecionados]
+                    try:
+                        enviar_email_lote(email_destino, lista)
+                        st.success("E-mail enviado com sucesso!")
+                    except Exception as e: st.error(f"Erro no envio: {e}")
+                else: st.warning("Selecione itens na tela e informe o e-mail.")
+
+        # Renderização dos Cards Vencidos
+        cols = st.columns(3)
+        for i, (idx, row) in enumerate(df_vencidos.iterrows()):
+            with cols[i % 3]:
+                st.checkbox("Selecionar", key=f"check_{idx}")
+                tipo_classe = "vencido" if row['STATUS'] == "VENCIDO" else "proximo"
+                st.markdown(f"""
+                    <div class='card-compact {tipo_classe}'>
+                        <strong>{row['Descrição'][:40]}</strong><br>
+                        <small style='color:#a1b0c0;'>Cód: {row['Código']}<br>
+                        Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small>
+                    </div>
+                """, unsafe_allow_html=True)
+
+# --- PÁGINA 3: VISÃO GERAL ---
+elif "Visão Geral" in menu:
+    st.title("📊 Status Geral do Inventário")
+    # Pequeno ajuste para a tabela ficar bonita (remover colunas desnecessárias se quiser)
+    df_tabela = df.drop(columns=['DATA_STR'], errors='ignore')
+    st.dataframe(df_tabela, use_container_width=True)
