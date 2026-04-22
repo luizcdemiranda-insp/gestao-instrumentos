@@ -1,4 +1,2 @@
 streamlit
 pandas
-python-dateutil
-streamlit-gsheets
