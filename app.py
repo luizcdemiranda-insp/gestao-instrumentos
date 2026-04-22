@@ -9,7 +9,7 @@ from email.message import EmailMessage
 st.set_page_config(page_title="🛡️ Gestão de Calibração", layout="wide")
 
 # URL de publicação da sua planilha como CSV
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1MQ1i0fZ_uV_lE9EZA92YOJ-jMYuPxppQ9qKql1_E5bY/export?format=csv&gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pubhtml"
 
 # --- FUNÇÕES DE APOIO ---
 @st.cache_data(ttl=600)
