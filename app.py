@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime, time
+from datetime import datetime
 import smtplib
 from email.message import EmailMessage
 import json
@@ -62,11 +62,11 @@ def carregar_config():
             with open("config.json", "r") as f:
                 return json.load(f)
         except: pass
-    return {"emails": "luizclaudio@tempermar.com.br", "horario": "08:00"}
+    return {"emails": "luizclaudio@tempermar.com.br"}
 
-def salvar_config(emails, horario):
+def salvar_config(emails):
     with open("config.json", "w") as f:
-        json.dump({"emails": emails, "horario": horario}, f)
+        json.dump({"emails": emails}, f)
 
 # --- CARGA E PROCESSAMENTO DE DADOS ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
@@ -120,7 +120,6 @@ def sistema_filtros(key_sufix):
 # --- INICIALIZAÇÃO DE SESSÃO E MEMÓRIA ---
 config_atual = carregar_config()
 if 'config_emails' not in st.session_state: st.session_state.config_emails = config_atual["emails"]
-if 'config_horario' not in st.session_state: st.session_state.config_horario = config_atual["horario"]
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
 # --- NAVEGAÇÃO ---
@@ -186,24 +185,15 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
 
 elif menu == "⚙️ Ajustes":
     st.markdown("### ⚙️ Configurações")
-    col_a1, col_a2 = st.columns(2)
-    with col_a1:
-        st.markdown("#### 📧 E-mails de Alerta")
-        novos_emails = st.text_input("Digitar novos e-mails (vazio para limpar):", value="", key="set_emails")
-        if st.button("Salvar E-mails"):
-            if novos_emails:
-                st.session_state.config_emails = novos_emails
-                salvar_config(st.session_state.config_emails, st.session_state.config_horario)
-                st.success("E-mails memorizados!")
-        st.info(f"**E-mails salvos:** {st.session_state.config_emails}")
-
-    with col_a2:
-        st.markdown("#### ⏰ Horário do Alerta (HH:MM)")
-        horario_digitado = st.text_input("Digitar novo horário (vazio para limpar):", value="", key="set_time")
-        if st.button("Salvar Horário"):
-            if re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', horario_digitado):
-                st.session_state.config_horario = horario_digitado
-                salvar_config(st.session_state.config_emails, st.session_state.config_horario)
-                st.success(f"Horário {horario_digitado} memorizado!")
-            elif horario_digitado: st.error("Use o formato HH:MM (ex: 14:30).")
-        st.warning(f"**Horário configurado:** {st.session_state.config_horario}")
+    
+    st.markdown("#### 📧 E-mails de Alerta")
+    st.write("Defina para quais endereços o sistema enviará as notificações manuais e automáticas.")
+    
+    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
+    if st.button("Salvar E-mails"):
+        if novos_emails:
+            st.session_state.config_emails = novos_emails
+            salvar_config(st.session_state.config_emails)
+            st.success("E-mails memorizados com sucesso!")
+            
+    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
