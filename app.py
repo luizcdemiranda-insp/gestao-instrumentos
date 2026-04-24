@@ -6,6 +6,7 @@ import smtplib
 from email.message import EmailMessage
 import json
 import os
+from dateutil.relativedelta import relativedelta
 
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
@@ -79,7 +80,7 @@ def carregar_config():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CARGA E PROCESSAMENTO DE DADOS ---
+# --- CARGA E PROCESSAMENTO DE DADOS (NOVA LÓGICA HIERÁRQUICA) ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -89,19 +90,42 @@ def carregar_dados():
 
 def processar_dados(df):
     if df.empty: return df
-    def extrair_data(texto):
-        if pd.isna(texto): return None
-        match = re.search(r'\d{2}/\d{2}/\d{4}', str(texto))
-        return pd.to_datetime(match.group(0), dayfirst=True) if match else None
-
-    df.columns = [c.strip() for c in df.columns]
+    
     col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
-    df['DATA_CALIBRACAO'] = df[col_caract].apply(extrair_data)
-    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna("N/A")
+    
+    def extrair_vencimento(texto):
+        if pd.isna(texto): return None, "SEM DATA DE CALIBRACAO"
+        
+        # 1. Tenta buscar "Data da Próxima Calibração"
+        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_prox:
+            return pd.to_datetime(match_prox.group(1), dayfirst=True), None
+        
+        # 2. Se não, tenta buscar "Data da Última Calibração" e soma 1 ano
+        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_ultima:
+            data_ultima = pd.to_datetime(match_ultima.group(1), dayfirst=True)
+            return data_ultima + relativedelta(years=1), None
+        
+        # 3. Se nada for encontrado
+        return None, "SEM DATA DE CALIBRACAO"
+
+    resultados = df[col_caract].apply(extrair_vencimento)
+    df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
+    df['ALERTA_DATA'] = [x[1] for x in resultados]
+    
+    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
+    
     hoje = datetime.now()
-    if df['DATA_CALIBRACAO'] is not None:
-        df['DIAS_RESTANTES'] = (df['DATA_CALIBRACAO'] - hoje).dt.days
-        df['STATUS'] = df['DIAS_RESTANTES'].apply(lambda d: "VENCIDO" if d < 0 else ("PRÓXIMO VENCIMENTO" if d <= 30 else "APTOS"))
+    
+    def classificar(row):
+        if row['ALERTA_DATA'] == "SEM DATA DE CALIBRACAO": return "VENCIDO"
+        dias = (row['DATA_CALIBRACAO'] - hoje).days
+        if dias < 0: return "VENCIDO"
+        if dias <= 30: return "PRÓXIMO VENCIMENTO"
+        return "APTOS"
+
+    df['STATUS'] = df.apply(classificar, axis=1)
     return df
 
 def enviar_email_consolidado(destinatarios, df_criticos):
@@ -170,61 +194,4 @@ elif menu == "✅ APTOS":
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            st.markdown(f"<div class='card-instrumento apto-card'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']}</span></div>", unsafe_allow_html=True)
-
-elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
-    status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos de vencer" else "VENCIDO"
-    classe_kpi = "proximo-kpi" if menu == "⏳ Próximos de vencer" else "vencido-kpi"
-    classe_card = "proximo-card" if menu == "⏳ Próximos de vencer" else "vencido-card"
-    
-    st.markdown(f"### {menu}")
-    
-    mostrar_botao = (menu == "🚨 VENCIDOS")
-    fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=mostrar_botao)
-    
-    df_f = df[df['STATUS'] == status_alvo]
-    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
-    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
-    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
-    
-    render_mini_kpi("Quantidade Filtrada", len(df_f), classe_kpi)
-
-    if menu == "🚨 VENCIDOS":
-        if st.button("🚨 Enviar alerta agora", use_container_width=True):
-            if st.session_state.selecionados:
-                try:
-                    enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
-                    st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens!")
-                except Exception as e: st.error(f"Erro no envio: {e}")
-            else: st.warning("Selecione os instrumentos nos cards abaixo.")
-
-    cols = st.columns(4)
-    for i, (idx, row) in enumerate(df_f.iterrows()):
-        with cols[i % 4]:
-            is_selected = idx in st.session_state.selecionados
-            
-            # Dinâmica de CSS do Card baseada na seleção
-            card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
-            
-            st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>📅 {row['DATA_STR']}</b></div>", unsafe_allow_html=True)
-            
-            # Botão interativo substituindo a checkbox
-            if is_selected:
-                if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
-                    st.session_state.selecionados.remove(idx)
-                    st.rerun()
-            else:
-                if st.button("⭕ Selecionar", key=f"btn_{idx}", use_container_width=True):
-                    st.session_state.selecionados.append(idx)
-                    st.rerun()
-
-elif menu == "⚙️ Ajustes":
-    st.markdown("### ⚙️ Configurações")
-    st.markdown("#### 📧 E-mails de Alerta")
-    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
-    if st.button("Salvar E-mails"):
-        if novos_emails:
-            st.session_state.config_emails = novos_emails
-            salvar_config(st.session_state.config_emails)
-            st.success("E-mails memorizados com sucesso!")
-    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
+            st.markdown(f"<div class='card-instrumento apto-card'><b>{
