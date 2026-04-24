@@ -184,7 +184,8 @@ if menu == "🛠️ Visão Geral":
 
 elif menu == "✅ APTOS":
     st.markdown("### ✅ Instrumentos Aptos")
-    fn, fc, fd = sistema_filtros("aptos")
+    # Botão de limpar ativado para APTOS
+    fn, fc, fd = sistema_filtros("aptos", mostrar_botao_limpar=True)
     df_f = df[df['STATUS'] == 'APTOS']
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
     if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
@@ -203,8 +204,8 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
     
     st.markdown(f"### {menu}")
     
-    mostrar_botao = (menu == "🚨 VENCIDOS")
-    fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=mostrar_botao)
+    # Botão de limpar ativado independentemente de ser VENCIDOS ou PRÓXIMOS
+    fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=True)
     
     df_f = df[df['STATUS'] == status_alvo]
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
