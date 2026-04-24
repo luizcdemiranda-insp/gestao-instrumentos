@@ -1,0 +1,30 @@
+name: Disparo Diário de Alertas
+
+on:
+  schedule:
+    # Este horário está em UTC. 11:00 UTC = 08:00 no horário de Brasília.
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Permite que você rode manualmente clicando em um botão no GitHub
+
+jobs:
+  verificar_e_enviar:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v3
+        
+      - name: Configurar o Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Instalar bibliotecas
+        run: pip install pandas
+          
+      - name: Rodar script de automação
+        env:
+          EMAIL_USUARIO: ${{ secrets.EMAIL_USUARIO }}
+          EMAIL_SENHA: ${{ secrets.EMAIL_SENHA }}
+          DESTINATARIOS: ${{ secrets.DESTINATARIOS }}
+        run: python automacao.py
