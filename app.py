@@ -194,4 +194,64 @@ elif menu == "✅ APTOS":
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            st.markdown(f"<div class='card-instrumento apto-card'><b>{
+            st.markdown(f"<div class='card-instrumento apto-card'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']}</span></div>", unsafe_allow_html=True)
+
+elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
+    status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos de vencer" else "VENCIDO"
+    classe_kpi = "proximo-kpi" if menu == "⏳ Próximos de vencer" else "vencido-kpi"
+    classe_card = "proximo-card" if menu == "⏳ Próximos de vencer" else "vencido-card"
+    
+    st.markdown(f"### {menu}")
+    
+    mostrar_botao = (menu == "🚨 VENCIDOS")
+    fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=mostrar_botao)
+    
+    df_f = df[df['STATUS'] == status_alvo]
+    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
+    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
+    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
+    
+    render_mini_kpi("Quantidade Filtrada", len(df_f), classe_kpi)
+
+    if menu == "🚨 VENCIDOS":
+        if st.button("🚨 Enviar alerta agora", use_container_width=True):
+            if st.session_state.selecionados:
+                try:
+                    enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
+                    st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens!")
+                except Exception as e: st.error(f"Erro no envio: {e}")
+            else: st.warning("Selecione os instrumentos nos cards abaixo.")
+
+    cols = st.columns(4)
+    for i, (idx, row) in enumerate(df_f.iterrows()):
+        with cols[i % 4]:
+            is_selected = idx in st.session_state.selecionados
+            
+            # Dinâmica de CSS do Card baseada na seleção
+            card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
+            
+            # Tratamento visual para itens SEM DATA
+            data_exibicao = "⚠️ SEM DATA" if row['DATA_STR'] == "SEM DATA DE CALIBRACAO" else f"📅 {row['DATA_STR']}"
+            
+            st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
+            
+            # Botão interativo substituindo a checkbox
+            if is_selected:
+                if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
+                    st.session_state.selecionados.remove(idx)
+                    st.rerun()
+            else:
+                if st.button("⭕ Selecionar", key=f"btn_{idx}", use_container_width=True):
+                    st.session_state.selecionados.append(idx)
+                    st.rerun()
+
+elif menu == "⚙️ Ajustes":
+    st.markdown("### ⚙️ Configurações")
+    st.markdown("#### 📧 E-mails de Alerta")
+    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
+    if st.button("Salvar E-mails"):
+        if novos_emails:
+            st.session_state.config_emails = novos_emails
+            salvar_config(st.session_state.config_emails)
+            st.success("E-mails memorizados com sucesso!")
+    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
