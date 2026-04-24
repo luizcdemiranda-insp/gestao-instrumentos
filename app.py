@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime, time
+from datetime import datetime
 import smtplib
 from email.message import EmailMessage
 
@@ -14,7 +14,7 @@ st.markdown("""
     .stApp { background-color: #0b1325; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #121e36; border-right: 1px solid #1f3052; }
     
-    /* Painel de Navegação: Alinhado à ESQUERDA */
+    /* Painel de Navegação: ALINHADO À ESQUERDA */
     div[role="radiogroup"] > label > div:first-child { display: none; }
     div[role="radiogroup"] > label {
         background-color: #1a2942; border: 1px solid #2a3d66; padding: 10px 20px;
@@ -28,7 +28,7 @@ st.markdown("""
         box-shadow: 0 0 10px rgba(255, 140, 0, 0.3);
     }
 
-    /* Indicadores Compactos (Metade do tamanho) */
+    /* Indicadores Compactos */
     .kpi-container {
         padding: 12px; border-radius: 10px; text-align: center;
         box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px;
@@ -37,11 +37,10 @@ st.markdown("""
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
 
-    /* Estilo de Cards Compactos */
+    /* Cards de Instrumentos */
     .card-instrumento {
         background-color: #1a2942; border-radius: 8px; padding: 10px;
         margin-bottom: 5px; border-left: 5px solid #ccc;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
     }
     .vencido-card { border-left-color: #ff8c00; background: linear-gradient(to right, #2e1111, #1a2942); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2e2811, #1a2942); }
@@ -77,25 +76,12 @@ def processar_dados(df):
         df['STATUS'] = df['DIAS_RESTANTES'].apply(lambda d: "VENCIDO" if d < 0 else ("PRÓXIMO VENCIMENTO" if d <= 30 else "APTOS"))
     return df
 
-def enviar_email_consolidado(destinatarios, df_criticos):
-    msg = EmailMessage()
-    msg['Subject'] = f"🚨 ALERTA: {len(df_criticos)} Instrumentos Pendentes"
-    msg['From'] = st.secrets["email"]["email_usuario"]
-    msg['To'] = destinatarios
-    conteudo = "Relatório de Instrumentos Pendentes:\n\n"
-    for _, row in df_criticos.iterrows():
-        conteudo += f"- {row['Descrição']} (TAG: {row['Código']}) - Venceu/Vence em: {str(row['DATA_CALIBRACAO'])[:10]}\n"
-    msg.set_content(conteudo)
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
-        smtp.send_message(msg)
-
 def render_mini_kpi(label, valor, classe):
     st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
 
 # --- INICIALIZAÇÃO DE SESSÃO ---
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
-if 'config_horario' not in st.session_state: st.session_state.config_horario = time(8, 0)
+if 'config_horario' not in st.session_state: st.session_state.config_horario = "08:00"
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
 # --- NAVEGAÇÃO ---
@@ -107,7 +93,7 @@ df = processar_dados(carregar_dados())
 
 # --- PÁGINAS ---
 if menu == "🛠️ Visão Geral":
-    st.markdown("### 🛠️ Dashboard Geral")
+    st.markdown("### 🛠️ Visão Geral")
     c1, c2, c3 = st.columns(3)
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
@@ -125,23 +111,12 @@ elif menu == "✅ APTOS":
 
 elif menu == "⏳ Próximos" or menu == "🚨 VENCIDOS":
     status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos" else "VENCIDO"
-    titulo = "⏳ Próximos de Vencer" if menu == "⏳ Próximos" else "🚨 Instrumentos Vencidos"
     classe_kpi = "proximo-kpi" if menu == "⏳ Próximos" else "vencido-kpi"
     classe_card = "proximo-card" if menu == "⏳ Próximos" else "vencido-card"
     
-    st.markdown(f"### {titulo}")
+    st.markdown(f"### {menu}")
     df_f = df[df['STATUS'] == status_alvo]
     render_mini_kpi("Quantidade", len(df_f), classe_kpi)
-
-    c_btn1, c_btn2 = st.columns([3,1])
-    with c_btn2:
-        if st.button("Disparar p/ Selecionados", use_container_width=True):
-            if st.session_state.selecionados:
-                try:
-                    enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
-                    st.success("Alertas enviados!")
-                except Exception as e: st.error(f"Erro: {e}")
-            else: st.warning("Selecione itens nos cards.")
 
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
@@ -152,20 +127,26 @@ elif menu == "⏳ Próximos" or menu == "🚨 VENCIDOS":
             elif not check and idx in st.session_state.selecionados: st.session_state.selecionados.remove(idx)
 
 elif menu == "⚙️ Ajustes":
-    st.markdown("### ⚙️ Configurações do Sistema")
+    st.markdown("### ⚙️ Configurações")
     col_a1, col_a2 = st.columns(2)
     with col_a1:
         st.markdown("#### 📧 E-mails de Alerta")
-        novos_emails = st.text_area("E-mails padrão (separados por vírgula):", value=st.session_state.config_emails)
+        # Campo inicia vazio conforme solicitado
+        novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="")
         if st.button("Salvar E-mails"):
-            st.session_state.config_emails = novos_emails
-            st.success("E-mails atualizados!")
-        st.info(f"**E-mails salvos:** {st.session_state.config_emails}")
+            if novos_emails:
+                st.session_state.config_emails = novos_emails
+                st.success("E-mails atualizados!")
+        st.info(f"**E-mails configurados:** {st.session_state.config_emails}")
 
     with col_a2:
-        st.markdown("#### ⏰ Horário do Alerta Diário")
-        horario_manual = st.time_input("Defina o horário de disparo:", value=st.session_state.config_horario)
+        st.markdown("#### ⏰ Horário do Alerta (HH:MM)")
+        # Campo de texto livre que interpreta o horário
+        horario_digitado = st.text_input("Digitar novo horário (ex: 14:30):", value="")
         if st.button("Salvar Horário"):
-            st.session_state.config_horario = horario_manual
-            st.success("Horário salvo!")
-        st.warning(f"**Horário configurado:** {st.session_state.config_horario.strftime('%H:%M')}")
+            if re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', horario_digitado):
+                st.session_state.config_horario = horario_digitado
+                st.success(f"Horário {horario_digitado} salvo com sucesso!")
+            else:
+                st.error("Formato inválido. Use HH:MM (ex: 08:00 ou 15:30).")
+        st.warning(f"**Horário configurado:** {st.session_state.config_horario}")
