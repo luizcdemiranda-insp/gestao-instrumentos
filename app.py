@@ -6,78 +6,70 @@ import smtplib
 from email.message import EmailMessage
 import json
 import os
+from dateutil.relativedelta import relativedelta
 
-# --- CONFIGURAÇÃO E ENGINE VISUAL ---
+# --- CONFIGURAÇÃO E ENGINE VISUAL (IDENTIDADE VISUAL VERMELHA) ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 st.markdown("""
     <style>
-    /* Fundo e Sidebar */
     .stApp { background-color: #0b1325; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #121e36; border-right: 1px solid #1f3052; }
-    
-    /* Painel de Navegação */
-    div[role="radiogroup"] > label > div:first-child { display: none; }
-    div[role="radiogroup"] > label {
-        background-color: #1a2942; border: 1px solid #2a3d66; padding: 10px 20px;
-        border-radius: 8px; margin-bottom: 8px; font-weight: bold; transition: 0.3s;
-        display: flex; align-items: center; justify-content: flex-start; 
-        width: 100%; color: #b0b4c4; cursor: pointer; text-align: left;
-    }
-    div[role="radiogroup"] > label:hover { border-color: #ff4b4b; color: white; }
-    div[role="radiogroup"] > label:has(input:checked) {
-        background-color: #ff4b4b; color: white; border-color: #ff4b4b;
-        box-shadow: 0 0 10px rgba(255, 75, 75, 0.4);
-    }
-
-    /* Indicadores Compactos */
-    .kpi-container {
-        padding: 12px; border-radius: 10px; text-align: center;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px;
-        border: 1px solid rgba(255,255,255,0.05);
-    }
-    .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
-    .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
-
-    /* Estilo Base dos Cards */
-    .card-instrumento {
-        background-color: #1a2942; border-radius: 8px; padding: 10px;
-        margin-bottom: 5px; border-left: 5px solid #ccc;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-        opacity: 0.7; /* Apagado por padrão para destacar os selecionados */
-        transition: all 0.3s ease;
-    }
-    
-    /* Cores das Categorias */
+    div[role="radiogroup"] > label { background-color: #1a2942; border: 1px solid #2a3d66; padding: 10px 20px; border-radius: 8px; margin-bottom: 8px; font-weight: bold; color: #b0b4c4; text-align: left; }
+    div[role="radiogroup"] > label:has(input:checked) { background-color: #ff4b4b; color: white; border-color: #ff4b4b; box-shadow: 0 0 10px rgba(255, 75, 75, 0.4); }
+    .kpi-container { padding: 12px; border-radius: 10px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+    .kpi-value { font-size: 28px; font-weight: 800; }
+    .card-instrumento { background-color: #1a2942; border-radius: 8px; padding: 10px; margin-bottom: 5px; border-left: 5px solid #ccc; transition: all 0.3s; opacity: 0.7; }
     .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #241010, #1a2942); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2e2811, #1a2942); }
     .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #112e1a, #1a2942); opacity: 1; }
-
-    /* ESTADO: SELECIONADO (O card "acende") */
-    .card-selecionado {
-        border: 2px solid #ff4b4b !important;
-        box-shadow: 0 0 15px rgba(255, 75, 75, 0.6) !important;
-        transform: scale(1.02);
-        opacity: 1 !important;
-        background: linear-gradient(to right, #3d1414, #1a2942) !important;
-    }
-
-    .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
-    .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
-    .apto-kpi { color: #2ecc71; border-bottom: 3px solid #2ecc71; }
+    .card-selecionado { border: 2px solid #ff4b4b !important; box-shadow: 0 0 15px rgba(255, 75, 75, 0.6); transform: scale(1.02); opacity: 1 !important; background: linear-gradient(to right, #3d1414, #1a2942) !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE MEMÓRIA (PERSISTÊNCIA) ---
+# --- FUNÇÕES DE MEMÓRIA E CONFIG ---
 def carregar_config():
     if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r") as f: return json.load(f)
-        except: pass
+        with open("config.json", "r") as f: return json.load(f)
     return {"emails": "luizclaudio@tempermar.com.br"}
 
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
+
+# --- PROCESSAMENTO DE DADOS (LÓGICA HIERÁRQUICA) ---
+@st.cache_data(ttl=600)
+def carregar_dados():
+    try: return pd.read_csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv")
+    except: return pd.DataFrame()
+
+def processar_dados(df):
+    if df.empty: return df
+    col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
+    
+    def extrair_vencimento(texto):
+        if pd.isna(texto): return None, "SEM DATA DE CALIBRACAO"
+        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_prox: return pd.to_datetime(match_prox.group(1), dayfirst=True), None
+        
+        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_ultima:
+            data_ultima = pd.to_datetime(match_ultima.group(1), dayfirst=True)
+            return data_ultima + relativedelta(years=1), None
+        return None, "SEM DATA DE CALIBRACAO"
+
+    res = df[col_caract].apply(extrair_vencimento)
+    df['DATA_CALIBRACAO'] = [x[0] for x in res]
+    df['ALERTA_DATA'] = [x[1] for x in res]
+    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
+    
+    hoje = datetime.now()
+    def classificar(row):
+        if row['ALERTA_DATA'] == "SEM DATA DE CALIBRACAO": return "VENCIDO"
+        dias = (row['DATA_CALIBRACAO'] - hoje).days
+        return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
+    
+    df['STATUS'] = df.apply(classificar, axis=1)
+    return df
 
 # --- CARGA E PROCESSAMENTO DE DADOS ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
@@ -218,13 +210,10 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
                     st.session_state.selecionados.append(idx)
                     st.rerun()
 
-elif menu == "⚙️ Ajustes":
+if menu == "⚙️ Ajustes":
     st.markdown("### ⚙️ Configurações")
-    st.markdown("#### 📧 E-mails de Alerta")
-    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
+    novos_emails = st.text_input("E-mails de Alerta:", value=st.session_state.get('config_emails', ''), key="set_emails")
     if st.button("Salvar E-mails"):
-        if novos_emails:
-            st.session_state.config_emails = novos_emails
-            salvar_config(st.session_state.config_emails)
-            st.success("E-mails memorizados com sucesso!")
-    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
+        st.session_state.config_emails = novos_emails
+        salvar_config(novos_emails)
+        st.success("Configurações salvas!")
