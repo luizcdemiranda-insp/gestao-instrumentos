@@ -109,12 +109,24 @@ def enviar_email_consolidado(destinatarios, df_criticos):
 def render_mini_kpi(label, valor, classe):
     st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
 
-def sistema_filtros(key_sufix):
-    st.markdown("##### 🔍 Filtros de pesquisa")
+# --- FUNÇÕES DOS FILTROS ---
+def limpar_memoria_filtros(sufixo):
+    for chave in [f"f_n_{sufixo}", f"f_c_{sufixo}", f"f_d_{sufixo}"]:
+        if chave in st.session_state:
+            st.session_state[chave] = ""
+
+def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
+    col_titulo, col_botao = st.columns([4, 1])
+    with col_titulo:
+        st.markdown("##### 🔍 Filtros de pesquisa")
+    with col_botao:
+        if mostrar_botao_limpar:
+            st.button("🧹 Limpar Filtros", key=f"btn_limpar_{key_sufix}", on_click=limpar_memoria_filtros, args=(key_sufix,), use_container_width=True)
+            
     c_f1, c_f2, c_f3 = st.columns(3)
-    f_nome = c_f1.text_input("Por Nome:", key=f"f_n_{key_sufix}", value="")
-    f_cod = c_f2.text_input("Por Código:", key=f"f_c_{key_sufix}", value="")
-    f_data = c_f3.text_input("Por Data (dd/mm/aaaa):", key=f"f_d_{key_sufix}", value="")
+    f_nome = c_f1.text_input("Por Nome:", key=f"f_n_{key_sufix}")
+    f_cod = c_f2.text_input("Por Código:", key=f"f_c_{key_sufix}")
+    f_data = c_f3.text_input("Por Data (dd/mm/aaaa):", key=f"f_d_{key_sufix}")
     return f_nome, f_cod, f_data
 
 # --- INICIALIZAÇÃO DE SESSÃO E MEMÓRIA ---
@@ -158,7 +170,11 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
     classe_card = "proximo-card" if menu == "⏳ Próximos de vencer" else "vencido-card"
     
     st.markdown(f"### {menu}")
-    fn, fc, fd = sistema_filtros(status_alvo)
+    
+    # O botão de limpar só aparece se a página for VENCIDOS
+    mostrar_botao = (menu == "🚨 VENCIDOS")
+    fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=mostrar_botao)
+    
     df_f = df[df['STATUS'] == status_alvo]
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
     if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
