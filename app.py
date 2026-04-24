@@ -139,4 +139,55 @@ elif menu == "⚠️ Gestão de Prazos":
             st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
             if st.button("Disparar Alerta p/ Selecionados", use_container_width=True):
                 if st.session_state.selecionados:
-                    df_selecionados =
+                    df_selecionados = df_vencidos.loc[st.session_state.selecionados]
+                    try:
+                        enviar_email_consolidado(st.session_state.config_emails, df_selecionados)
+                        st.success(f"Alerta enviado sobre {len(df_selecionados)} itens!")
+                    except Exception as e: st.error(f"Erro: {e}")
+                else:
+                    st.warning("Selecione ao menos um item abaixo.")
+
+        # Grid de Cards Menores
+        cols = st.columns(4) 
+        for i, (idx, row) in enumerate(df_vencidos.iterrows()):
+            with cols[i % 4]:
+                tipo = "vencido" if row['STATUS'] == "VENCIDO" else "proximo"
+                st.markdown(f"""
+                    <div class='card-compact {tipo}'>
+                        <b>{row['Descrição'][:28]}...</b><br>
+                        <span style='color: #8c9eff; font-size: 0.9em;'>TAG: {row['Código']}</span><br>
+                        <span style='color: #ffffff; font-weight: bold;'>📅 Venc.: {str(row['DATA_CALIBRACAO'])[:10]}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                check = st.checkbox("Incluir no Alerta", key=f"sel_{idx}", value=(idx in st.session_state.selecionados))
+                if check and idx not in st.session_state.selecionados: st.session_state.selecionados.append(idx)
+                elif not check and idx in st.session_state.selecionados: st.session_state.selecionados.remove(idx)
+
+# --- PÁGINA: CONFIGURAÇÕES ---
+elif menu == "⚙️ Configurações":
+    st.markdown("<h2>⚙️ Configurações do Sistema</h2>", unsafe_allow_html=True)
+    
+    st.markdown("### 🔔 Envio Automático de Alertas")
+    st.write("Configure os parâmetros para o relatório diário consolidado.")
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.markdown("<div class='card-compact'>", unsafe_allow_html=True)
+        st.markdown("#### 📧 E-mails Destinatários")
+        novos_emails = st.text_input("Separe por vírgula:", value=st.session_state.config_emails)
+        if st.button("Atualizar E-mails"):
+            st.session_state.config_emails = novos_emails
+            st.success("E-mails atualizados!")
+        st.info(f"**Atuais:** {st.session_state.config_emails}")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col_c2:
+        st.markdown("<div class='card-compact'>", unsafe_allow_html=True)
+        st.markdown("#### ⏰ Horário de Disparo")
+        novo_horario = st.time_input("Definir envio diário:", value=st.session_state.config_horario)
+        if st.button("Atualizar Horário"):
+            st.session_state.config_horario = novo_horario
+            st.success("Horário atualizado!")
+        st.info(f"**Atual:** {st.session_state.config_horario.strftime('%H:%M')}")
+        st.markdown("</div>", unsafe_allow_html=True)
