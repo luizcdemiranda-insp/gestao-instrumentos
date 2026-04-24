@@ -13,22 +13,22 @@ st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 st.markdown("""
     <style>
-    /* Fundo e Sidebar */
-    .stApp { background-color: #0b1325; color: #e0e0e0; }
-    section[data-testid="stSidebar"] { background-color: #121e36; border-right: 1px solid #1f3052; }
+    /* Fundo e Sidebar (Azul Marinho) */
+    .stApp { background-color: #0a192f; color: #e0e0e0; }
+    section[data-testid="stSidebar"] { background-color: #112240; border-right: 1px solid #233554; }
     
-    /* Painel de Navegação */
+    /* Painel de Navegação (Destaques em Laranja) */
     div[role="radiogroup"] > label > div:first-child { display: none; }
     div[role="radiogroup"] > label {
-        background-color: #1a2942; border: 1px solid #2a3d66; padding: 10px 20px;
+        background-color: #112240; border: 1px solid #233554; padding: 10px 20px;
         border-radius: 8px; margin-bottom: 8px; font-weight: bold; transition: 0.3s;
         display: flex; align-items: center; justify-content: flex-start; 
         width: 100%; color: #b0b4c4; cursor: pointer; text-align: left;
     }
-    div[role="radiogroup"] > label:hover { border-color: #ff4b4b; color: white; }
+    div[role="radiogroup"] > label:hover { border-color: #ff9800; color: white; }
     div[role="radiogroup"] > label:has(input:checked) {
-        background-color: #ff4b4b; color: white; border-color: #ff4b4b;
-        box-shadow: 0 0 10px rgba(255, 75, 75, 0.4);
+        background-color: #ff9800; color: white; border-color: #ff9800;
+        box-shadow: 0 0 10px rgba(255, 152, 0, 0.4);
     }
 
     /* Indicadores Compactos */
@@ -42,25 +42,23 @@ st.markdown("""
 
     /* Estilo Base dos Cards */
     .card-instrumento {
-        background-color: #1a2942; border-radius: 8px; padding: 10px;
+        background-color: #112240; border-radius: 8px; padding: 10px;
         margin-bottom: 5px; border-left: 5px solid #ccc;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-        opacity: 0.7; /* Apagado por padrão para destacar os selecionados */
-        transition: all 0.3s ease;
+        opacity: 0.7; transition: all 0.3s ease;
     }
     
     /* Cores das Categorias */
-    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #241010, #1a2942); }
-    .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2e2811, #1a2942); }
-    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #112e1a, #1a2942); opacity: 1; }
+    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #2a1616, #112240); }
+    .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2a2510, #112240); }
+    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #102416, #112240); opacity: 1; }
 
-    /* ESTADO: SELECIONADO (O card "acende") */
+    /* ESTADO: SELECIONADO (O card "acende" em laranja) */
     .card-selecionado {
-        border: 2px solid #ff4b4b !important;
-        box-shadow: 0 0 15px rgba(255, 75, 75, 0.6) !important;
+        border: 2px solid #ff9800 !important;
+        box-shadow: 0 0 15px rgba(255, 152, 0, 0.6) !important;
         transform: scale(1.02);
         opacity: 1 !important;
-        background: linear-gradient(to right, #3d1414, #1a2942) !important;
+        background: linear-gradient(to right, #332100, #112240) !important;
     }
 
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
@@ -69,7 +67,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE MEMÓRIA (PERSISTÊNCIA) ---
+# --- FUNÇÕES DE MEMÓRIA E PERSISTÊNCIA ---
 def carregar_config():
     if os.path.exists("config.json"):
         try:
@@ -80,7 +78,7 @@ def carregar_config():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CARGA E PROCESSAMENTO DE DADOS (NOVA LÓGICA HIERÁRQUICA) ---
+# --- CARGA E PROCESSAMENTO HIERÁRQUICO ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -96,18 +94,14 @@ def processar_dados(df):
     def extrair_vencimento(texto):
         if pd.isna(texto): return None, "SEM DATA DE CALIBRACAO"
         
-        # 1. Tenta buscar "Data da Próxima Calibração"
         match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
-        if match_prox:
-            return pd.to_datetime(match_prox.group(1), dayfirst=True), None
+        if match_prox: return pd.to_datetime(match_prox.group(1), dayfirst=True), None
         
-        # 2. Se não, tenta buscar "Data da Última Calibração" e soma 1 ano
         match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
         if match_ultima:
             data_ultima = pd.to_datetime(match_ultima.group(1), dayfirst=True)
             return data_ultima + relativedelta(years=1), None
         
-        # 3. Se nada for encontrado
         return None, "SEM DATA DE CALIBRACAO"
 
     resultados = df[col_caract].apply(extrair_vencimento)
@@ -115,7 +109,6 @@ def processar_dados(df):
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
-    
     hoje = datetime.now()
     
     def classificar(row):
@@ -161,7 +154,24 @@ def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
     f_data = c_f3.text_input("Por Data (dd/mm/aaaa):", key=f"f_d_{key_sufix}")
     return f_nome, f_cod, f_data
 
-# --- INICIALIZAÇÃO DE SESSÃO E MEMÓRIA ---
+# --- FUNÇÃO DE POP-UP (DIALOG) ---
+@st.dialog("Confirmação de Envio em Lote")
+def popup_confirmar_envio(x, y, df_alvo):
+    st.write("Será enviado um e-mail uma relação completa de todos os instrumentos não aptos:")
+    st.write(f"**# {x} Próximos de vencer**")
+    st.write(f"**# {y} Vencidos**")
+    
+    col1, col2 = st.columns(2)
+    if col1.button("Cancelar", use_container_width=True):
+        st.rerun()
+    if col2.button("OK", use_container_width=True, type="primary"):
+        try:
+            enviar_email_consolidado(st.session_state.config_emails, df_alvo)
+            st.success("E-mail disparado com sucesso para toda a base não apta!")
+        except Exception as e:
+            st.error(f"Erro no envio: {e}")
+
+# --- INICIALIZAÇÃO DE SESSÃO ---
 config_atual = carregar_config()
 if 'config_emails' not in st.session_state: st.session_state.config_emails = config_atual["emails"]
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
@@ -184,7 +194,6 @@ if menu == "🛠️ Visão Geral":
 
 elif menu == "✅ APTOS":
     st.markdown("### ✅ Instrumentos Aptos")
-    # Botão de limpar ativado para APTOS
     fn, fc, fd = sistema_filtros("aptos", mostrar_botao_limpar=True)
     df_f = df[df['STATUS'] == 'APTOS']
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
@@ -204,7 +213,6 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
     
     st.markdown(f"### {menu}")
     
-    # Botão de limpar ativado independentemente de ser VENCIDOS ou PRÓXIMOS
     fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=True)
     
     df_f = df[df['STATUS'] == status_alvo]
@@ -219,24 +227,24 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
             if st.session_state.selecionados:
                 try:
                     enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
-                    st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens!")
+                    st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens selecionados!")
                 except Exception as e: st.error(f"Erro no envio: {e}")
-            else: st.warning("Selecione os instrumentos nos cards abaixo.")
+            else:
+                # Dispara o Pop-up se nada estiver marcado
+                qtd_prox = len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'])
+                qtd_venc = len(df[df['STATUS'] == 'VENCIDO'])
+                df_nao_aptos = df[df['STATUS'].isin(['PRÓXIMO VENCIMENTO', 'VENCIDO'])]
+                popup_confirmar_envio(qtd_prox, qtd_venc, df_nao_aptos)
 
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
             is_selected = idx in st.session_state.selecionados
-            
-            # Dinâmica de CSS do Card baseada na seleção
             card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
-            
-            # Tratamento visual para itens SEM DATA
             data_exibicao = "⚠️ SEM DATA" if row['DATA_STR'] == "SEM DATA DE CALIBRACAO" else f"📅 {row['DATA_STR']}"
             
             st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
             
-            # Botão interativo substituindo a checkbox
             if is_selected:
                 if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
                     st.session_state.selecionados.remove(idx)
