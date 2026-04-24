@@ -1,61 +1,28 @@
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime
+from datetime import datetime, time
 import smtplib
 from email.message import EmailMessage
 
-# --- CONFIGURAÇÃO E DESIGN SYSTEM (NAVY & NEON) ---
-st.set_page_config(page_title="🛠️ Monitoramento", layout="wide")
+# --- CONFIGURAÇÃO E CSS (ESTILO COMPACTO) ---
+st.set_page_config(page_title="🛡️ Gestão de Calibração", layout="wide")
 
 st.markdown("""
     <style>
-    /* PALETA E FUNDO */
-    .stApp { background-color: #0b132b; color: #ffffff; }
-    section[data-testid="stSidebar"] { background-color: #1c2541; }
-    
-    /* MENU ESTILO MERCÚRIO */
-    div[role="radiogroup"] > label > div:first-child { display: none; }
-    div[role="radiogroup"] > label {
-        background-color: #2b3a55; border: 1px solid #3a506b; padding: 12px 15px;
-        border-radius: 8px; margin-bottom: 8px; font-weight: bold; transition: 0.3s;
-        display: flex; align-items: center; justify-content: flex-start; cursor: pointer;
-        width: 100%; color: #ffffff;
-    }
-    div[role="radiogroup"] > label:hover { border-color: #ff8c00; }
-    div[role="radiogroup"] > label:has(input:checked) {
-        background-color: #ff8c00; color: #ffffff; border-color: #ff8c00;
-        box-shadow: 0 0 12px rgba(255, 140, 0, 0.4);
-    }
-    
-    /* KPI MODERNO (FONTE VIVA) */
-    .kpi-container {
-        background-color: #1c2541; padding: 20px; border-radius: 15px;
-        text-align: center; border: 1px solid #3a506b;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 20px;
-    }
-    .kpi-value {
-        font-family: 'Inter', sans-serif; font-size: 64px; font-weight: 800;
-        line-height: 1; margin: 10px 0;
-        text-shadow: 0 0 15px var(--glow-color);
-    }
-    .kpi-label { font-size: 14px; color: #a1b0c0; text-transform: uppercase; letter-spacing: 1px; }
-
-    /* CARDS COMPACTOS */
     .card-compact { 
-        padding: 15px; border-radius: 8px; margin: 8px; 
-        border-left: 6px solid #ccc; font-size: 0.95em;
-        background-color: #1c2541; color: #e0e6ed;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.5);
-        height: 125px;
+        padding: 10px; border-radius: 6px; margin: 4px; 
+        border-left: 4px solid #ccc; font-size: 0.85em;
+        background-color: #f8f9fa; color: #333;
     }
-    .vencido { border-color: #ff4b4b; --glow-color: rgba(255, 75, 75, 0.6); }
-    .proximo { border-color: #f1c40f; --glow-color: rgba(241, 196, 15, 0.6); }
-    .aptos { border-color: #2ecc71; --glow-color: rgba(46, 204, 113, 0.6); }
+    .vencido { border-color: #ff6b6b; background-color: #fff5f5; }
+    .proximo { border-color: #fcc419; background-color: #fff9db; }
+    .stMetric { background: #1a1c24; padding: 15px; border-radius: 10px; border: 1px solid #333; }
+    div[data-testid="stExpander"] { border: none !important; box-shadow: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# URL da Planilha
+# URL CSV da Planilha (Certifique-se de que é o link de exportação CSV)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -68,131 +35,118 @@ def processar_dados(df):
         match = re.search(r'\d{2}/\d{2}/\d{4}', str(texto))
         return pd.to_datetime(match.group(0), dayfirst=True) if match else None
 
-    df['DATA_CALIBRACAO'] = df['Características'].apply(extrair_data)
+    # Ajuste dinâmico de colunas (case insensitive)
+    df.columns = [c.strip() for c in df.columns]
+    col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), None)
+    
+    df['DATA_CALIBRACAO'] = df[col_caract].apply(extrair_data) if col_caract else None
     hoje = datetime.now()
-    df['DIAS_RESTANTES'] = (df['DATA_CALIBRACAO'] - hoje).dt.days
     
-    def rotular_status(dias):
-        if pd.isna(dias): return "SEM DATA"
-        if dias < 0: return "VENCIDO"
-        if dias <= 30: return "PRÓXIMO VENCIMENTO"
-        return "NO PRAZO"
-    
-    df['STATUS'] = df['DIAS_RESTANTES'].apply(rotular_status)
-    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna("N/A")
+    if df['DATA_CALIBRACAO'] is not None:
+        df['DIAS_RESTANTES'] = (df['DATA_CALIBRACAO'] - hoje).dt.days
+        df['STATUS'] = df['DIAS_RESTANTES'].apply(lambda d: "VENCIDO" if d < 0 else ("PRÓXIMO VENCIMENTO" if d <= 30 else "NO PRAZO"))
     return df
 
-def render_kpi(label, value, color_class):
-    color = "#2ecc71" if color_class == "aptos" else ("#ff4b4b" if color_class == "vencido" else "#f1c40f")
-    html = f"""
-    <div class="kpi-container {color_class}">
-        <div class="kpi-label">{label}</div>
-        <div class="kpi-value" style="color: {color};">{value}</div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+def enviar_email_consolidado(destinatarios, df_criticos):
+    if df_criticos.empty: return
+    
+    # Montagem do corpo do e-mail em HTML (Atacado)
+    corpo_html = "<h2>Relatório Diário de Calibração</h2><p>Segue a lista de instrumentos em estado crítico:</p>"
+    corpo_html += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
+    corpo_html += "<tr style='background-color: #f2f2f2;'><th>Código</th><th>Descrição</th><th>Vencimento</th><th>Status</th></tr>"
+    
+    for _, row in df_criticos.iterrows():
+        cor = "red" if row['STATUS'] == "VENCIDO" else "orange"
+        corpo_html += f"<tr><td>{row['Código']}</td><td>{row['Descrição']}</td><td>{str(row['DATA_CALIBRACAO'])[:10]}</td><td style='color:{cor}'><b>{row['STATUS']}</b></td></tr>"
+    
+    corpo_html += "</table><br><p>Sistema de Gestão Automática</p>"
 
-def enviar_email_lote(destino, lista_instrumentos):
     msg = EmailMessage()
-    msg['Subject'] = "🚨 ALERTA: Monitoramento de Instrumentos"
+    msg['Subject'] = f"🚨 RELATÓRIO CRÍTICO: {len(df_criticos)} Instrumentos Pendentes"
     msg['From'] = st.secrets["email"]["email_usuario"]
-    msg['To'] = destino
-    conteudo = "Relatório de Pendências:\n\n"
-    for item in lista_instrumentos:
-        conteudo += f"- {item['Desc']} (Cód: {item['Cod']}) | Vencimento: {item['Data']}\n"
-    msg.set_content(conteudo)
+    msg['To'] = destinatarios
+    msg.add_alternative(corpo_html, subtype='html')
+
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
         smtp.send_message(msg)
 
+# --- INICIALIZAÇÃO DE SETTINGS (SESSÃO) ---
+if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
+if 'config_horario' not in st.session_state: st.session_state.config_horario = time(8, 0)
+
 # --- NAVEGAÇÃO ---
-st.sidebar.title("🛠️ Monitoramento de Instrumentos")
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
-
-menu = st.sidebar.radio("", ["✅ INSTRUMENTOS APTOS", "🔴 VENCIDOS", "⚠️ PRÓXIMOS DE VENCER", "📊 VISÃO GERAL"], index=0, label_visibility="collapsed")
-
+menu = st.sidebar.radio("Navegar:", ["Visão Geral", "⚠️ Vencidos", "⚙️ Configurações"], index=1)
 df = processar_dados(carregar_dados())
 
-# Lógica de Limpar Filtros
-def limpar_filtros():
-    for key in st.session_state.keys():
-        if key.startswith("f_"): st.session_state[key] = ""
-
-# --- PÁGINA: INSTRUMENTOS APTOS ---
-if "APTOS" in menu:
-    st.title("✅ INSTRUMENTOS APTOS")
-    df_pg = df[df['STATUS'] == 'NO PRAZO'].copy()
+# --- PÁGINA: CONFIGURAÇÕES ---
+if menu == "⚙️ Configurações":
+    st.title("⚙️ Configurações do Sistema")
     
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-    f_nome = c1.text_input("🔍 Nome", key="f_apt_nome")
-    f_cod = c2.text_input("🔍 Código", key="f_apt_cod")
-    f_data = c3.text_input("📅 Vencimento", key="f_apt_data")
-    c4.markdown("<br>", unsafe_allow_html=True)
-    c4.button("🧹 Limpar", on_click=limpar_filtros)
+    st.subheader("🔔 Envio Automático de Alertas")
+    
+    with st.container():
+        col_c1, col_c2 = st.columns(2)
+        
+        with col_c1:
+            st.markdown("### 📧 Destinatários")
+            novos_emails = st.text_area("Definir e-mail(s) padrão (separe por vírgula):", value=st.session_state.config_emails)
+            if st.button("Salvar E-mails"):
+                st.session_state.config_emails = novos_emails
+                st.success("E-mails atualizados!")
+            
+            st.info(f"**Atualmente configurados:**\n\n{st.session_state.config_emails}")
 
-    if f_nome: df_pg = df_pg[df_pg['Descrição'].str.contains(f_nome, case=False, na=False)]
-    if f_cod: df_pg = df_pg[df_pg['Código'].str.contains(f_cod, case=False, na=False)]
-    if f_data: df_pg = df_pg[df_pg['DATA_STR'].str.contains(f_data, case=False, na=False)]
-
-    render_kpi("INSTRUMENTOS APTOS PARA USO", len(df_pg), "aptos")
-
-    cols = st.columns(3)
-    for i, (idx, row) in enumerate(df_pg.iterrows()):
-        with cols[i % 3]:
-            st.markdown(f"<div class='card-compact em-dia'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
+        with col_c2:
+            st.markdown("### ⏰ Agendamento")
+            novo_horario = st.time_input("Definir horário de envio diário:", value=st.session_state.config_horario)
+            if st.button("Salvar Horário"):
+                st.session_state.config_horario = novo_horario
+                st.success("Horário de envio atualizado!")
+            
+            st.warning(f"**Horário escolhido:** {st.session_state.config_horario.strftime('%H:%M')}")
+    
+    st.write("---")
+    if st.button("🚀 Testar Envio de Relatório Geral Agora"):
+        df_criticos = df[df['STATUS'].isin(['VENCIDO', 'PRÓXIMO VENCIMENTO'])]
+        try:
+            enviar_email_consolidado(st.session_state.config_emails, df_criticos)
+            st.success("Relatório consolidado enviado para a lista padrão!")
+        except Exception as e:
+            st.error(f"Falha no teste: {e}")
 
 # --- PÁGINA: VENCIDOS ---
-elif "🔴 VENCIDOS" in menu:
-    st.title("🔴 INSTRUMENTOS VENCIDOS")
-    df_pg = df[df['STATUS'] == 'VENCIDO'].copy()
+elif menu == "⚠️ Vencidos":
+    df_vencidos = df[df['STATUS'].isin(['VENCIDO', 'PRÓXIMO VENCIMENTO'])].copy()
     
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-    f_nome = c1.text_input("🔍 Nome", key="f_ven_nome")
-    f_cod = c2.text_input("🔍 Código", key="f_ven_cod")
-    f_data = c3.text_input("📅 Vencimento", key="f_ven_data")
-    c4.markdown("<br>", unsafe_allow_html=True)
-    c4.button("🧹 Limpar", on_click=limpar_filtros)
-
-    if f_nome: df_pg = df_pg[df_pg['Descrição'].str.contains(f_nome, case=False, na=False)]
-    if f_cod: df_pg = df_pg[df_pg['Código'].str.contains(f_cod, case=False, na=False)]
-    if f_data: df_pg = df_pg[df_pg['DATA_STR'].str.contains(f_data, case=False, na=False)]
-
-    render_kpi("INSTRUMENTOS FORA DO PRAZO", len(df_pg), "vencido")
-
-    email_destino = st.sidebar.text_input("E-mail para Alerta:")
-    if st.sidebar.button("Disparar E-mail"):
-        selecionados = [idx for idx in df_pg.index if st.session_state.get(f"ck_{idx}")]
-        if selecionados and email_destino:
-            lista = [{'Desc': df_pg.loc[i, 'Descrição'], 'Cod': df_pg.loc[i, 'Código'], 'Data': df_pg.loc[i, 'DATA_STR']} for i in selecionados]
-            enviar_email_lote(email_destino, lista)
-            st.success("Alerta enviado!")
-
-    cols = st.columns(3)
-    for i, (idx, row) in enumerate(df_pg.iterrows()):
-        with cols[i % 3]:
-            st.checkbox("Selecionar", key=f"ck_{idx}")
-            st.markdown(f"<div class='card-compact vencido'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
-
-# --- PÁGINA: PRÓXIMOS ---
-elif "PRÓXIMOS" in menu:
-    st.title("⚠️ PRÓXIMOS DE VENCER (30 DIAS)")
-    df_pg = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'].copy()
+    st.title("⚠️ Gestão de Prazos")
+    col_kpi1, col_kpi2, col_kpi3 = st.columns([1, 1, 3])
+    col_kpi1.metric("Pendentes", len(df_vencidos))
+    col_kpi2.metric("Já Vencidos", len(df_vencidos[df_vencidos['STATUS'] == "VENCIDO"]))
     
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-    f_nome = c1.text_input("🔍 Nome", key="f_px_nome")
-    f_cod = c2.text_input("🔍 Código", key="f_px_cod")
-    f_data = c3.text_input("📅 Vencimento", key="f_px_data")
-    c4.markdown("<br>", unsafe_allow_html=True)
-    c4.button("🧹 Limpar", on_click=limpar_filtros)
-
-    render_kpi("ATENÇÃO: VENCIMENTO PRÓXIMO", len(df_pg), "proximo")
-
-    cols = st.columns(3)
-    for i, (idx, row) in enumerate(df_pg.iterrows()):
-        with cols[i % 3]:
-            st.markdown(f"<div class='card-compact proximo'><strong>{row['Descrição'][:40]}</strong><br><small style='color:#a1b0c0;'>Cód: {row['Código']}<br>Vencimento: <b style='color:#ffffff;'>{row['DATA_STR']}</b></small></div>", unsafe_allow_html=True)
+    if df_vencidos.empty:
+        st.success("Parabéns! Todos os instrumentos estão aptos.")
+    else:
+        st.write("---")
+        # Grid Compacto
+        cols = st.columns(4) # Aumentado para 4 colunas para ser ainda menor
+        if 'selecionados' not in st.session_state: st.session_state.selecionados = []
+        
+        for i, (idx, row) in enumerate(df_vencidos.iterrows()):
+            with cols[i % 4]:
+                tipo = "vencido" if row['STATUS'] == "VENCIDO" else "proximo"
+                st.markdown(f"""
+                    <div class='card-compact {tipo}'>
+                        <b>{row['Descrição'][:25]}</b><br>
+                        <small>TAG: {row['Código']}</small><br>
+                        <span style='color: #d9534f;'>📅 {str(row['DATA_CALIBRACAO'])[:10]}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+                if st.checkbox("Sel.", key=f"sel_{idx}"):
+                    if idx not in st.session_state.selecionados: st.session_state.selecionados.append(idx)
+                elif idx in st.session_state.selecionados: st.session_state.selecionados.remove(idx)
 
 # --- PÁGINA: VISÃO GERAL ---
-elif "VISÃO GERAL" in menu:
-    st.title("📊 STATUS GERAL DO INVENTÁRIO")
-    st.dataframe(df.drop(columns=['DATA_STR']), use_container_width=True)
+elif menu == "Visão Geral":
+    st.title("📋 Visão Geral")
+    st.dataframe(df, use_container_width=True)
