@@ -7,7 +7,7 @@ from email.message import EmailMessage
 import json
 import os
 
-# --- CONFIGURAÇÃO E ENGINE VISUAL (IDENTIDADE VISUAL VERMELHA) ---
+# --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 st.markdown("""
@@ -16,7 +16,7 @@ st.markdown("""
     .stApp { background-color: #0b1325; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #121e36; border-right: 1px solid #1f3052; }
     
-    /* Painel de Navegação: ALINHADO À ESQUERDA */
+    /* Painel de Navegação */
     div[role="radiogroup"] > label > div:first-child { display: none; }
     div[role="radiogroup"] > label {
         background-color: #1a2942; border: 1px solid #2a3d66; padding: 10px 20px;
@@ -39,15 +39,28 @@ st.markdown("""
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
 
-    /* Estilo de Cards Compactos */
+    /* Estilo Base dos Cards */
     .card-instrumento {
         background-color: #1a2942; border-radius: 8px; padding: 10px;
         margin-bottom: 5px; border-left: 5px solid #ccc;
         box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        opacity: 0.7; /* Apagado por padrão para destacar os selecionados */
+        transition: all 0.3s ease;
     }
-    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #3d1414, #1a2942); }
+    
+    /* Cores das Categorias */
+    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #241010, #1a2942); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2e2811, #1a2942); }
-    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #112e1a, #1a2942); }
+    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #112e1a, #1a2942); opacity: 1; }
+
+    /* ESTADO: SELECIONADO (O card "acende") */
+    .card-selecionado {
+        border: 2px solid #ff4b4b !important;
+        box-shadow: 0 0 15px rgba(255, 75, 75, 0.6) !important;
+        transform: scale(1.02);
+        opacity: 1 !important;
+        background: linear-gradient(to right, #3d1414, #1a2942) !important;
+    }
 
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
     .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
@@ -59,14 +72,12 @@ st.markdown("""
 def carregar_config():
     if os.path.exists("config.json"):
         try:
-            with open("config.json", "r") as f:
-                return json.load(f)
+            with open("config.json", "r") as f: return json.load(f)
         except: pass
     return {"emails": "luizclaudio@tempermar.com.br"}
 
 def salvar_config(emails):
-    with open("config.json", "w") as f:
-        json.dump({"emails": emails}, f)
+    with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
 # --- CARGA E PROCESSAMENTO DE DADOS ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
@@ -112,16 +123,13 @@ def render_mini_kpi(label, valor, classe):
 # --- FUNÇÕES DOS FILTROS ---
 def limpar_memoria_filtros(sufixo):
     for chave in [f"f_n_{sufixo}", f"f_c_{sufixo}", f"f_d_{sufixo}"]:
-        if chave in st.session_state:
-            st.session_state[chave] = ""
+        if chave in st.session_state: st.session_state[chave] = ""
 
 def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
     col_titulo, col_botao = st.columns([4, 1])
-    with col_titulo:
-        st.markdown("##### 🔍 Filtros de pesquisa")
+    with col_titulo: st.markdown("##### 🔍 Filtros de pesquisa")
     with col_botao:
-        if mostrar_botao_limpar:
-            st.button("🧹 Limpar Filtros", key=f"btn_limpar_{key_sufix}", on_click=limpar_memoria_filtros, args=(key_sufix,), use_container_width=True)
+        if mostrar_botao_limpar: st.button("🧹 Limpar Filtros", key=f"btn_limpar_{key_sufix}", on_click=limpar_memoria_filtros, args=(key_sufix,), use_container_width=True)
             
     c_f1, c_f2, c_f3 = st.columns(3)
     f_nome = c_f1.text_input("Por Nome:", key=f"f_n_{key_sufix}")
@@ -171,7 +179,6 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
     
     st.markdown(f"### {menu}")
     
-    # O botão de limpar só aparece se a página for VENCIDOS
     mostrar_botao = (menu == "🚨 VENCIDOS")
     fn, fc, fd = sistema_filtros(status_alvo, mostrar_botao_limpar=mostrar_botao)
     
@@ -194,22 +201,30 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            st.markdown(f"<div class='card-instrumento {classe_card}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>📅 {row['DATA_STR']}</b></div>", unsafe_allow_html=True)
-            check = st.checkbox("Selecionar", key=f"sel_{idx}", value=(idx in st.session_state.selecionados))
-            if check and idx not in st.session_state.selecionados: st.session_state.selecionados.append(idx)
-            elif not check and idx in st.session_state.selecionados: st.session_state.selecionados.remove(idx)
+            is_selected = idx in st.session_state.selecionados
+            
+            # Dinâmica de CSS do Card baseada na seleção
+            card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
+            
+            st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>📅 {row['DATA_STR']}</b></div>", unsafe_allow_html=True)
+            
+            # Botão interativo substituindo a checkbox
+            if is_selected:
+                if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
+                    st.session_state.selecionados.remove(idx)
+                    st.rerun()
+            else:
+                if st.button("⭕ Selecionar", key=f"btn_{idx}", use_container_width=True):
+                    st.session_state.selecionados.append(idx)
+                    st.rerun()
 
 elif menu == "⚙️ Ajustes":
     st.markdown("### ⚙️ Configurações")
-    
     st.markdown("#### 📧 E-mails de Alerta")
-    st.write("Defina para quais endereços o sistema enviará as notificações manuais e automáticas.")
-    
     novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
     if st.button("Salvar E-mails"):
         if novos_emails:
             st.session_state.config_emails = novos_emails
             salvar_config(st.session_state.config_emails)
             st.success("E-mails memorizados com sucesso!")
-            
     st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
