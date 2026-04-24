@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 import re
-from datetime import datetime
+from datetime import datetime, time
 import smtplib
 from email.message import EmailMessage
+import json
+import os
 
-# --- CONFIGURAÇÃO E ENGINE VISUAL REFINADA (Tons Vermelhos) ---
+# --- CONFIGURAÇÃO E ENGINE VISUAL (IDENTIDADE VISUAL VERMELHA) ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 st.markdown("""
@@ -37,10 +39,11 @@ st.markdown("""
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
 
-    /* Cards de Instrumentos (Vermelho mais vivo para alertas) */
+    /* Estilo de Cards Compactos */
     .card-instrumento {
         background-color: #1a2942; border-radius: 8px; padding: 10px;
         margin-bottom: 5px; border-left: 5px solid #ccc;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
     }
     .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #3d1414, #1a2942); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2e2811, #1a2942); }
@@ -52,7 +55,20 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CARGA E PROCESSAMENTO ---
+# --- FUNÇÕES DE MEMÓRIA (PERSISTÊNCIA) ---
+def carregar_config():
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                return json.load(f)
+        except: pass
+    return {"emails": "luizclaudio@tempermar.com.br", "horario": "08:00"}
+
+def salvar_config(emails, horario):
+    with open("config.json", "w") as f:
+        json.dump({"emails": emails, "horario": horario}, f)
+
+# --- CARGA E PROCESSAMENTO DE DADOS ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -94,15 +110,17 @@ def render_mini_kpi(label, valor, classe):
     st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
 
 def sistema_filtros(key_sufix):
+    st.markdown("##### 🔍 Filtros de pesquisa")
     c_f1, c_f2, c_f3 = st.columns(3)
-    f_nome = c_f1.text_input("Filtrar por Nome:", key=f"f_n_{key_sufix}", value="")
-    f_cod = c_f2.text_input("Filtrar por Código:", key=f"f_c_{key_sufix}", value="")
-    f_data = c_f3.text_input("Filtrar por Data (dd/mm/aaaa):", key=f"f_d_{key_sufix}", value="")
+    f_nome = c_f1.text_input("Por Nome:", key=f"f_n_{key_sufix}", value="")
+    f_cod = c_f2.text_input("Por Código:", key=f"f_c_{key_sufix}", value="")
+    f_data = c_f3.text_input("Por Data (dd/mm/aaaa):", key=f"f_d_{key_sufix}", value="")
     return f_nome, f_cod, f_data
 
-# --- INICIALIZAÇÃO DE SESSÃO ---
-if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
-if 'config_horario' not in st.session_state: st.session_state.config_horario = "08:00"
+# --- INICIALIZAÇÃO DE SESSÃO E MEMÓRIA ---
+config_atual = carregar_config()
+if 'config_emails' not in st.session_state: st.session_state.config_emails = config_atual["emails"]
+if 'config_horario' not in st.session_state: st.session_state.config_horario = config_atual["horario"]
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
 # --- NAVEGAÇÃO ---
@@ -114,7 +132,7 @@ df = processar_dados(carregar_dados())
 
 # --- PÁGINAS ---
 if menu == "🛠️ Visão Geral":
-    st.markdown("### 🛠️ Visão Geral")
+    st.markdown("### 🛠️ Dashboard Geral")
     c1, c2, c3 = st.columns(3)
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
@@ -154,9 +172,9 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
             if st.session_state.selecionados:
                 try:
                     enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
-                    st.success(f"Alerta enviado com sucesso para {len(st.session_state.selecionados)} instrumentos!")
+                    st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens!")
                 except Exception as e: st.error(f"Erro no envio: {e}")
-            else: st.warning("Selecione os instrumentos nos cards abaixo antes de enviar.")
+            else: st.warning("Selecione os instrumentos nos cards abaixo.")
 
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
@@ -175,7 +193,8 @@ elif menu == "⚙️ Ajustes":
         if st.button("Salvar E-mails"):
             if novos_emails:
                 st.session_state.config_emails = novos_emails
-                st.success("E-mails atualizados!")
+                salvar_config(st.session_state.config_emails, st.session_state.config_horario)
+                st.success("E-mails memorizados!")
         st.info(f"**E-mails salvos:** {st.session_state.config_emails}")
 
     with col_a2:
@@ -184,6 +203,7 @@ elif menu == "⚙️ Ajustes":
         if st.button("Salvar Horário"):
             if re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', horario_digitado):
                 st.session_state.config_horario = horario_digitado
-                st.success(f"Horário {horario_digitado} salvo!")
-            elif horario_digitado: st.error("Formato inválido. Use HH:MM.")
+                salvar_config(st.session_state.config_emails, st.session_state.config_horario)
+                st.success(f"Horário {horario_digitado} memorizado!")
+            elif horario_digitado: st.error("Use o formato HH:MM (ex: 14:30).")
         st.warning(f"**Horário configurado:** {st.session_state.config_horario}")
