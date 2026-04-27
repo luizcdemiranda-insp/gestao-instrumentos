@@ -58,12 +58,94 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- FUNÇÕES DE MEMÓRIA E PERSISTÊNCIA ---
-def carregar_config():
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r") as f: return json.load(f)
-        except: pass
-    return {"emails": "luizclaudio@tempermar.com.br"}
+# --- CONEXÃO DIRETA COM OMIE ---
+@st.cache_data(ttl=600, show_spinner=False)
+def carregar_dados():
+    app_key = "6531794134866"
+    app_secret = "5d3f1060b0b5c474561b7e23adf747ef"
+    
+    df_final = pd.DataFrame()
+    
+    with st.spinner('Conectando ao OMIE e baixando a base de dados... Isso pode levar um minuto.'):
+        # 1. Puxar Produtos (Código, Descrição e Características)
+        url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
+        pagina = 1
+        produtos_totais = []
+        
+        while True:
+            payload = {
+                "call": "ListarProdutos",
+                "app_key": app_key,
+                "app_secret": app_secret,
+                "param": [{"pagina": pagina, "registros_por_pagina": 100, "apenas_importado_api": "N", "filtrar_apenas_omiepdv": "N"}]
+            }
+            try:
+                # O timeout=15 impede que o sistema congele infinitamente
+                resposta = requests.post(url_produtos, json=payload, timeout=15).json()
+                
+                # Captura erros nativos do Omie (ex: chave inválida, sem permissão)
+                if "faultstring" in resposta:
+                    st.error(f"Erro OMIE (Produtos): {resposta['faultstring']}")
+                    return pd.DataFrame()
+                    
+                if "produto_servico_cadastro" in resposta:
+                    produtos_totais.extend(resposta["produto_servico_cadastro"])
+                    
+                if pagina >= resposta.get("total_de_paginas", 1): break
+                pagina += 1
+            except Exception as e: 
+                st.error(f"Erro de conexão com a API de Produtos: {e}")
+                return pd.DataFrame()
+
+        df_produtos = pd.DataFrame([{
+            "Código": p.get("codigo", ""), 
+            "Descrição": p.get("descricao", ""),
+            "Características": p.get("caracteristicas", "")
+        } for p in produtos_totais])
+
+        # 2. Puxar Estoque Físico Real
+        url_estoque = "https://app.omie.com.br/api/v1/estoque/resumo/"
+        data_hoje = datetime.now().strftime("%d/%m/%Y")
+        pagina_est = 1
+        estoque_totais = []
+
+        while True:
+            payload_est = {
+                "call": "ListarPosicaoEstoque",
+                "app_key": app_key,
+                "app_secret": app_secret,
+                "param": [{"data_posicao": data_hoje, "pagina": pagina_est, "registros_por_pagina": 100}]
+            }
+            try:
+                resp_est = requests.post(url_estoque, json=payload_est, timeout=15).json()
+                
+                if "faultstring" in resp_est:
+                    st.error(f"Erro OMIE (Estoque): {resp_est['faultstring']}")
+                    break
+
+                if "produtos" in resp_est:
+                    estoque_totais.extend(resp_est["produtos"])
+                    
+                if pagina_est >= resp_est.get("total_de_paginas", 1): break
+                pagina_est += 1
+            except Exception as e:
+                st.error(f"Erro de conexão com a API de Estoque: {e}")
+                break
+
+        df_estoque = pd.DataFrame([{
+            "Código": e.get("codigo", ""), 
+            "Estoque Físico": e.get("saldo", 0)
+        } for e in estoque_totais])
+
+        # 3. Mesclar as bases e retornar
+        if not df_produtos.empty and not df_estoque.empty:
+            df_final = pd.merge(df_produtos, df_estoque, on="Código", how="left")
+            df_final['Estoque Físico'] = df_final['Estoque Físico'].fillna(0)
+        elif not df_produtos.empty:
+            df_final = df_produtos
+            df_final['Estoque Físico'] = 0
+            
+    return df_final
 
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
