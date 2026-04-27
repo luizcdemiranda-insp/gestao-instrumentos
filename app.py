@@ -76,88 +76,59 @@ def carregar_config():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- PROCESSAMENTO DE DADOS ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
+import requests # Adicione isso no topo do seu arquivo app.py junto com os outros imports
 
-@st.cache_data(ttl=600)
+# --- CONEXÃO DIRETA COM O OMIE ---
+@st.cache_data(ttl=600) # Mantém os dados na memória por 10 minutos para não travar o Omie
 def carregar_dados():
-    try: return pd.read_csv(SHEET_URL)
-    except: return pd.DataFrame()
-
-def processar_dados(df):
-    if df.empty: return df
+    app_key = "6531794134866"
+    app_secret = "5d3f1060b0b5c474561b7e23adf747ef"
+    url_omie = "https://app.omie.com.br/api/v1/geral/produtos/"
     
-    col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
-    col_estoque = next((c for c in df.columns if 'ESTOQUE' in c.upper()), "Estoque Físico")
+    pagina = 1
+    produtos_totais = []
     
-    # Converte estoque para numérico para evitar erros de comparação
-    df[col_estoque] = pd.to_numeric(df[col_estoque], errors='coerce').fillna(0)
-    
-    def extrair_vencimento(texto):
-        if pd.isna(texto): return None, "SEM DATA"
-        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
-        if match_prox:
-            dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
-            return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
+    # O Omie entrega os produtos em "páginas". Este loop baixa todas as páginas automaticamente.
+    while True:
+        payload = {
+            "call": "ListarProdutos",
+            "app_key": app_key,
+            "app_secret": app_secret,
+            "param": [{
+                "pagina": pagina,
+                "registros_por_pagina": 100,
+                "apenas_importado_api": "N",
+                "filtrar_apenas_omiepdv": "N"
+            }]
+        }
         
-        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
-        if match_ultima:
-            dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
-            return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
-        return None, "SEM DATA"
-
-    resultados = df[col_caract].apply(extrair_vencimento)
-    df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
-    df['ALERTA_DATA'] = [x[1] for x in resultados]
-    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
-    hoje = datetime.now()
-    
-    def classificar(row):
-        if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
-        dias = (row['DATA_CALIBRACAO'] - hoje).days
-        return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
-
-    df['STATUS'] = df.apply(classificar, axis=1)
-    df['_ESTOQUE_VAL'] = df[col_estoque]
-    return df
-
-def enviar_email_consolidado(destinatarios, df_criticos):
-    msg = EmailMessage()
-    msg['Subject'] = f"🚨 ALERTA: {len(df_criticos)} Instrumentos Selecionados"
-    msg['From'] = st.secrets["email"]["email_usuario"]
-    msg['To'] = destinatarios
-    conteudo = "Relatório de Instrumentos Selecionados para Alerta:\n\n"
-    for _, row in df_criticos.iterrows():
-        conteudo += f"- {row['Descrição']} (TAG: {row['Código']}) - Vencimento: {row['DATA_STR']}\n"
-    msg.set_content(conteudo)
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
-        smtp.send_message(msg)
-
-def render_mini_kpi(label, valor, classe):
-    st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
-
-def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
-    col_titulo, col_botao = st.columns([4, 1])
-    with col_titulo: st.markdown("##### 🔍 Filtros de pesquisa")
-    with col_botao:
-        if mostrar_botao_limpar:
-            if st.button("🧹 Limpar", key=f"btn_limpar_{key_sufix}", use_container_width=True):
-                for k in [f"f_n_{key_sufix}", f"f_c_{key_sufix}", f"f_d_{key_sufix}"]:
-                    if k in st.session_state: st.session_state[k] = ""
-                st.rerun()
-    c1, c2, c3 = st.columns(3)
-    return c1.text_input("Nome:", key=f"f_n_{key_sufix}"), c2.text_input("Código:", key=f"f_c_{key_sufix}"), c3.text_input("Data:", key=f"f_d_{key_sufix}")
-
-@st.dialog("Confirmação de Envio")
-def popup_confirmar_envio(x, y, df_alvo):
-    st.write("Será enviado um e-mail com a relação completa de instrumentos não aptos:")
-    st.write(f"**# {x} Próximos de vencer** | **# {y} Vencidos**")
-    if st.button("Confirmar Envio", use_container_width=True, type="primary"):
         try:
-            enviar_email_consolidado(st.session_state.config_emails, df_alvo)
-            st.success("Enviado!")
-        except Exception as e: st.error(f"Erro: {e}")
+            resposta = requests.post(url_omie, json=payload).json()
+            
+            if "produto_servico_cadastro" in resposta:
+                produtos_totais.extend(resposta["produto_servico_cadastro"])
+                
+            # Se chegamos na última página, encerra a busca
+            if pagina >= resposta.get("total_de_paginas", 1):
+                break
+                
+            pagina += 1
+            
+        except Exception as e:
+            st.error(f"Erro ao conectar com o OMIE: {e}")
+            return pd.DataFrame()
+
+    # Transforma os dados brutos do Omie no formato que nosso sistema já conhece
+    lista_formatada = []
+    for p in produtos_totais:
+        lista_formatada.append({
+            "Código": p.get("codigo_produto", ""),
+            "Descrição": p.get("descricao", ""),
+            "Características": p.get("observacao", ""), # <-- Precisamos confirmar este campo
+            "Estoque Físico": 1 # <-- Placeholder temporário (explicado abaixo)
+        })
+        
+    return pd.DataFrame(lista_formatada)
 
 # --- INICIALIZAÇÃO E NAVEGAÇÃO ---
 if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
