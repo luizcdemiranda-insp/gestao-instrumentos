@@ -68,91 +68,123 @@ def carregar_config():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CONEXÃO DIRETA COM OMIE ---
-@st.cache_data(ttl=600, show_spinner=False)
+# --- CONEXÃO DIRETA COM OMIE (MODO DIAGNÓSTICO) ---
+# Removi o cache temporariamente para vermos TUDO que acontece na tela ao vivo
 def carregar_dados():
     app_key = "6531794134866"
     app_secret = "5d3f1060b0b5c474561b7e23adf747ef"
     
     df_final = pd.DataFrame()
+    st.info("📡 Iniciando comunicação com o servidor do OMIE...")
     
-    with st.spinner('Conectando ao OMIE e baixando a base de dados... Isso pode levar um minuto.'):
-        # 1. Puxar Produtos (Código, Descrição e Características)
-        url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
-        pagina = 1
-        produtos_totais = []
-        
-        while True:
-            payload = {
-                "call": "ListarProdutos",
-                "app_key": app_key,
-                "app_secret": app_secret,
-                "param": [{"pagina": pagina, "registros_por_pagina": 100, "apenas_importado_api": "N", "filtrar_apenas_omiepdv": "N"}]
-            }
-            try:
-                resposta = requests.post(url_produtos, json=payload, timeout=15).json()
-                
-                if "faultstring" in resposta:
-                    st.error(f"Erro OMIE (Produtos): {resposta['faultstring']}")
-                    return pd.DataFrame()
-                    
-                if "produto_servico_cadastro" in resposta:
-                    produtos_totais.extend(resposta["produto_servico_cadastro"])
-                    
-                if pagina >= resposta.get("total_de_paginas", 1): break
-                pagina += 1
-            except Exception as e: 
-                st.error(f"Erro de conexão com a API de Produtos: {e}")
+    # 1. Puxar Produtos (Código, Descrição e Características)
+    url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
+    pagina = 1
+    produtos_totais = []
+    
+    aviso_produtos = st.empty() # Cria uma caixa de texto que se atualiza sozinha
+    
+    while True:
+        aviso_produtos.warning(f"📦 Baixando Produtos - Lendo página {pagina}...")
+        payload = {
+            "call": "ListarProdutos",
+            "app_key": app_key,
+            "app_secret": app_secret,
+            # Aumentei para 500 registros para ser 5x mais rápido
+            "param": [{"pagina": pagina, "registros_por_pagina": 500, "apenas_importado_api": "N", "filtrar_apenas_omiepdv": "N"}]
+        }
+        try:
+            req = requests.post(url_produtos, json=payload, timeout=20)
+            
+            # Checa se o servidor do Omie caiu ou recusou bruscamente
+            if req.status_code != 200:
+                st.error(f"O Omie recusou a conexão (Erro {req.status_code}): {req.text}")
                 return pd.DataFrame()
-
-        df_produtos = pd.DataFrame([{
-            "Código": p.get("codigo", ""), 
-            "Descrição": p.get("descricao", ""),
-            "Características": p.get("caracteristicas", "")
-        } for p in produtos_totais])
-
-        # 2. Puxar Estoque Físico Real
-        url_estoque = "https://app.omie.com.br/api/v1/estoque/resumo/"
-        data_hoje = datetime.now().strftime("%d/%m/%Y")
-        pagina_est = 1
-        estoque_totais = []
-
-        while True:
-            payload_est = {
-                "call": "ListarPosicaoEstoque",
-                "app_key": app_key,
-                "app_secret": app_secret,
-                "param": [{"data_posicao": data_hoje, "pagina": pagina_est, "registros_por_pagina": 100}]
-            }
-            try:
-                resp_est = requests.post(url_estoque, json=payload_est, timeout=15).json()
                 
-                if "faultstring" in resp_est:
-                    st.error(f"Erro OMIE (Estoque): {resp_est['faultstring']}")
-                    break
+            resposta = req.json()
+            
+            # Checa os erros internos (senhas, permissões, etc)
+            if "faultstring" in resposta:
+                st.error(f"Erro do Omie (Produtos): {resposta['faultstring']}")
+                return pd.DataFrame()
+                
+            total_paginas = resposta.get("total_de_paginas", 1)
+            
+            if "produto_servico_cadastro" in resposta:
+                produtos_totais.extend(resposta["produto_servico_cadastro"])
+                
+            if pagina >= total_paginas: 
+                aviso_produtos.success(f"✅ Sucesso! {len(produtos_totais)} produtos baixados da base.")
+                break
+                
+            pagina += 1
+        except Exception as e: 
+            st.error(f"Erro no código ao puxar Produtos: {e}")
+            return pd.DataFrame()
 
-                if "produtos" in resp_est:
-                    estoque_totais.extend(resp_est["produtos"])
-                    
-                if pagina_est >= resp_est.get("total_de_paginas", 1): break
-                pagina_est += 1
-            except Exception as e:
-                st.error(f"Erro de conexão com a API de Estoque: {e}")
+    df_produtos = pd.DataFrame([{
+        "Código": p.get("codigo", ""), 
+        "Descrição": p.get("descricao", ""),
+        "Características": p.get("caracteristicas", "")
+    } for p in produtos_totais])
+
+    # 2. Puxar Estoque Físico Real
+    url_estoque = "https://app.omie.com.br/api/v1/estoque/resumo/"
+    data_hoje = datetime.now().strftime("%d/%m/%Y")
+    pagina_est = 1
+    estoque_totais = []
+    
+    aviso_estoque = st.empty()
+
+    while True:
+        aviso_estoque.warning(f"📊 Baixando Estoque - Lendo página {pagina_est}...")
+        payload_est = {
+            "call": "ListarPosicaoEstoque",
+            "app_key": app_key,
+            "app_secret": app_secret,
+            "param": [{"data_posicao": data_hoje, "pagina": pagina_est, "registros_por_pagina": 500}]
+        }
+        try:
+            req_est = requests.post(url_estoque, json=payload_est, timeout=20)
+            
+            if req_est.status_code != 200:
+                st.error(f"O Omie recusou a conexão de estoque (Erro {req_est.status_code}): {req_est.text}")
+                break
+                
+            resp_est = req_est.json()
+            
+            if "faultstring" in resp_est:
+                st.error(f"Erro do Omie (Estoque): {resp_est['faultstring']}")
                 break
 
-        df_estoque = pd.DataFrame([{
-            "Código": e.get("codigo", ""), 
-            "Estoque Físico": e.get("saldo", 0)
-        } for e in estoque_totais])
+            total_paginas_est = resp_est.get("total_de_paginas", 1)
 
-        # 3. Mesclar as bases e retornar
-        if not df_produtos.empty and not df_estoque.empty:
-            df_final = pd.merge(df_produtos, df_estoque, on="Código", how="left")
-            df_final['Estoque Físico'] = df_final['Estoque Físico'].fillna(0)
-        elif not df_produtos.empty:
-            df_final = df_produtos
-            df_final['Estoque Físico'] = 0
-            
+            if "produtos" in resp_est:
+                estoque_totais.extend(resp_est["produtos"])
+                
+            if pagina_est >= total_paginas_est: 
+                aviso_estoque.success(f"✅ Sucesso! {len(estoque_totais)} saldos de estoque confirmados.")
+                break
+                
+            pagina_est += 1
+        except Exception as e:
+            st.error(f"Erro no código ao puxar Estoque: {e}")
+            break
+
+    df_estoque = pd.DataFrame([{
+        "Código": e.get("codigo", ""), 
+        "Estoque Físico": e.get("saldo", 0)
+    } for e in estoque_totais])
+
+    # 3. Mesclar as bases e retornar
+    if not df_produtos.empty and not df_estoque.empty:
+        df_final = pd.merge(df_produtos, df_estoque, on="Código", how="left")
+        df_final['Estoque Físico'] = df_final['Estoque Físico'].fillna(0)
+    elif not df_produtos.empty:
+        df_final = df_produtos
+        df_final['Estoque Físico'] = 0
+        
+    st.info("✨ Processamento concluído! Montando painel...")
     return df_final
 
 def processar_dados(df):
@@ -177,6 +209,7 @@ def processar_dados(df):
 
     resultados = df[col_caract].apply(extrair_vencimento)
     df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
+    df['DATA_CALIBRACAO'] = pd.to_datetime(df['DATA_CALIBRACAO'])
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
