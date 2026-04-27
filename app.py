@@ -142,4 +142,198 @@ def carregar_dados():
 
         df_estoque = pd.DataFrame([{
             "Código": e.get("codigo", ""), 
-            "Estoque Físico": e.
+            "Estoque Físico": e.get("saldo", 0)
+        } for e in estoque_totais])
+
+        # 3. Mesclar as bases e retornar
+        if not df_produtos.empty and not df_estoque.empty:
+            df_final = pd.merge(df_produtos, df_estoque, on="Código", how="left")
+            df_final['Estoque Físico'] = df_final['Estoque Físico'].fillna(0)
+        elif not df_produtos.empty:
+            df_final = df_produtos
+            df_final['Estoque Físico'] = 0
+            
+    return df_final
+
+def processar_dados(df):
+    if df.empty: return df
+    
+    col_caract = "Características"
+    col_estoque = "Estoque Físico"
+    df[col_estoque] = pd.to_numeric(df[col_estoque], errors='coerce').fillna(0)
+    
+    def extrair_vencimento(texto):
+        if pd.isna(texto): return None, "SEM DATA"
+        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_prox:
+            dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
+            return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
+        
+        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        if match_ultima:
+            dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
+            return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
+        return None, "SEM DATA"
+
+    resultados = df[col_caract].apply(extrair_vencimento)
+    df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
+    df['ALERTA_DATA'] = [x[1] for x in resultados]
+    df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
+    hoje = datetime.now()
+    
+    def classificar(row):
+        if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
+        dias = (row['DATA_CALIBRACAO'] - hoje).days
+        return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
+
+    df['STATUS'] = df.apply(classificar, axis=1)
+    df['_ESTOQUE_VAL'] = df[col_estoque]
+    return df
+
+def enviar_email_consolidado(destinatarios, df_criticos):
+    msg = EmailMessage()
+    msg['Subject'] = f"🚨 ALERTA: {len(df_criticos)} Instrumentos Selecionados"
+    msg['From'] = st.secrets["email"]["email_usuario"]
+    msg['To'] = destinatarios
+    conteudo = "Relatório de Instrumentos Selecionados para Alerta:\n\n"
+    for _, row in df_criticos.iterrows():
+        conteudo += f"- {row['Descrição']} (TAG: {row['Código']}) - Vencimento: {row['DATA_STR']}\n"
+    msg.set_content(conteudo)
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
+        smtp.send_message(msg)
+
+def render_mini_kpi(label, valor, classe):
+    st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
+
+def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
+    col_titulo, col_botao = st.columns([4, 1])
+    with col_titulo: st.markdown("##### 🔍 Filtros de pesquisa")
+    with col_botao:
+        if mostrar_botao_limpar:
+            if st.button("🧹 Limpar", key=f"btn_limpar_{key_sufix}", use_container_width=True):
+                for k in [f"f_n_{key_sufix}", f"f_c_{key_sufix}", f"f_d_{key_sufix}"]:
+                    if k in st.session_state: st.session_state[k] = ""
+                st.rerun()
+    c1, c2, c3 = st.columns(3)
+    return c1.text_input("Nome:", key=f"f_n_{key_sufix}"), c2.text_input("Código:", key=f"f_c_{key_sufix}"), c3.text_input("Data:", key=f"f_d_{key_sufix}")
+
+@st.dialog("Confirmação de Envio")
+def popup_confirmar_envio(x, y, df_alvo):
+    st.write("Será enviado um e-mail com a relação completa de instrumentos não aptos:")
+    st.write(f"**# {x} Próximos de vencer** | **# {y} Vencidos**")
+    if st.button("Confirmar Envio", use_container_width=True, type="primary"):
+        try:
+            enviar_email_consolidado(st.session_state.config_emails, df_alvo)
+            st.success("Enviado!")
+        except Exception as e: st.error(f"Erro: {e}")
+
+# --- INICIALIZAÇÃO E NAVEGAÇÃO ---
+if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
+if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
+
+df = processar_dados(carregar_dados())
+st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
+st.sidebar.markdown("---")
+
+btn_metro_type = "primary" if st.session_state.modulo_ativo == "METROLOGIA" else "secondary"
+if st.sidebar.button("📏 METROLOGIA", use_container_width=True, type=btn_metro_type):
+    st.session_state.modulo_ativo = "METROLOGIA"
+    st.session_state.pagina_ativa = "🛠️ Visão Geral"
+    st.rerun()
+
+if st.session_state.modulo_ativo == "METROLOGIA":
+    paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"]
+    idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
+    escolha = st.sidebar.radio("SubMetro", paginas_metro, index=idx, label_visibility="collapsed")
+    if escolha != st.session_state.pagina_ativa:
+        st.session_state.pagina_ativa = escolha
+        st.rerun()
+
+btn_ec_type = "primary" if st.session_state.modulo_ativo == "CONSULTA EC" else "secondary"
+if st.sidebar.button("🔍 CONSULTA EC", use_container_width=True, type=btn_ec_type):
+    st.session_state.modulo_ativo = "CONSULTA EC"
+    st.session_state.pagina_ativa = "✅ DISPONÍVEIS"
+    st.rerun()
+
+if st.session_state.modulo_ativo == "CONSULTA EC":
+    paginas_ec = ["✅ DISPONÍVEIS", "❌ FORA ESTOQUE"]
+    idx = paginas_ec.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_ec else 0
+    escolha = st.sidebar.radio("SubEC", paginas_ec, index=idx, label_visibility="collapsed")
+    if escolha != st.session_state.pagina_ativa:
+        st.session_state.pagina_ativa = escolha
+        st.rerun()
+
+st.sidebar.markdown("---")
+menu = st.session_state.pagina_ativa
+
+# --- PÁGINAS ---
+if menu == "🛠️ Visão Geral":
+    st.markdown("### 🛠️ Visão Geral de Metrologia")
+    c1, c2, c3 = st.columns(3)
+    with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
+    with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
+    with c3: render_mini_kpi("Vencidos", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
+    st.dataframe(df.drop(columns=['_ESTOQUE_VAL', 'DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
+
+elif menu in ["✅ APTOS", "✅ DISPONÍVEIS", "❌ FORA ESTOQUE"]:
+    classe_card = "apto-card" if menu != "❌ FORA ESTOQUE" else "vencido-card"
+    st.markdown(f"### {menu}")
+    
+    fn, fc, fd = sistema_filtros(menu, True)
+    df_f = df[df['STATUS'] == 'APTOS']
+    
+    if menu == "✅ DISPONÍVEIS": df_f = df_f[df_f['_ESTOQUE_VAL'] > 0]
+    if menu == "❌ FORA ESTOQUE": df_f = df_f[df_f['_ESTOQUE_VAL'] <= 0]
+    
+    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
+    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
+    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
+    
+    cols = st.columns(4)
+    for i, (idx, row) in enumerate(df_f.iterrows()):
+        with cols[i % 4]:
+            estoque_texto = f"Estoque: {row['_ESTOQUE_VAL']}"
+            st.markdown(f"<div class='card-instrumento {classe_card}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']} | 📦 {estoque_texto}</span></div>", unsafe_allow_html=True)
+
+elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
+    status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos de vencer" else "VENCIDO"
+    st.markdown(f"### {menu}")
+    fn, fc, fd = sistema_filtros(menu, True)
+    df_f = df[df['STATUS'] == status_alvo]
+    
+    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
+    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
+    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
+
+    if menu == "🚨 VENCIDOS":
+        if st.button("🚨 Alerta em Lote", use_container_width=True):
+            if not st.session_state.selecionados:
+                popup_confirmar_envio(len(df[df['STATUS']=='PRÓXIMO VENCIMENTO']), len(df[df['STATUS']=='VENCIDO']), df[df['STATUS'].isin(['VENCIDO','PRÓXIMO VENCIMENTO'])])
+            else:
+                enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
+                st.success("Enviado!")
+
+    cols = st.columns(4)
+    for i, (idx, row) in enumerate(df_f.iterrows()):
+        with cols[i % 4]:
+            is_sel = idx in st.session_state.selecionados
+            c_class = f"{'vencido-card' if menu=='🚨 VENCIDOS' else 'proximo-card'} {'card-selecionado' if is_sel else ''}"
+            
+            if row['DATA_STR'] == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
+            elif row['DATA_STR'] == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
+            else: data_exibicao = f"📅 {row['DATA_STR']}"
+
+            st.markdown(f"<div class='card-instrumento {c_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
+            if st.button("✅" if is_sel else "⭕", key=f"s_{idx}"):
+                if is_sel: st.session_state.selecionados.remove(idx)
+                else: st.session_state.selecionados.append(idx)
+                st.rerun()
+
+elif menu == "⚙️ Ajustes":
+    st.markdown("### ⚙️ Ajustes de E-mail")
+    novos = st.text_input("Lista de e-mails:", value=st.session_state.config_emails)
+    if st.button("Salvar"):
+        st.session_state.config_emails = novos
+        salvar_config(novos)
+        st.success("Configuração salva!")
