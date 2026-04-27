@@ -12,13 +12,18 @@ from dateutil.relativedelta import relativedelta
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
+# --- INICIALIZAÇÃO DE MEMÓRIA (BLINDAGEM CONTRA ERROS) ---
+# Fica no topo para garantir que o menu nunca quebre
+if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
+if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
+if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
+if 'selecionados' not in st.session_state: st.session_state.selecionados = []
+
 st.markdown("""
     <style>
-    /* Fundo e Sidebar (Azul Marinho) */
     .stApp { background-color: #0a192f; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #112240; border-right: 1px solid #233554; }
     
-    /* 1. Botões Principais no Sidebar */
     section[data-testid="stSidebar"] div.stButton > button {
         background-color: #112240; border: 1px solid #233554; padding: 12px 20px;
         border-radius: 8px; font-weight: bold; transition: 0.3s;
@@ -30,7 +35,6 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(255, 152, 0, 0.5) !important;
     }
 
-    /* 2. Sub-menu (Menu Acordeão) */
     section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child { display: none; }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label {
         background-color: transparent; border: none; padding: 8px 10px 8px 45px;
@@ -42,7 +46,6 @@ st.markdown("""
         color: #ff9800; border-left: 4px solid #ff9800; background-color: rgba(255, 152, 0, 0.05); font-weight: bold;
     }
 
-    /* Indicadores e Cards */
     .kpi-container { padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); }
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
@@ -57,135 +60,86 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE MEMÓRIA E PERSISTÊNCIA ---
-def carregar_config():
-    if os.path.exists("config.json"):
-        try:
-            with open("config.json", "r") as f: return json.load(f)
-        except: pass
-    return {"emails": "luizclaudio@tempermar.com.br"}
-
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CONEXÃO DIRETA COM OMIE (MODO DIAGNÓSTICO) ---
-# Removi o cache temporariamente para vermos TUDO que acontece na tela ao vivo
+# --- CONEXÃO DIRETA COM OMIE (MÉTODO SNIPER) ---
+@st.cache_data(ttl=600, show_spinner=False)
 def carregar_dados():
     app_key = "6531794134866"
     app_secret = "5d3f1060b0b5c474561b7e23adf747ef"
     
-    df_final = pd.DataFrame()
-    st.info("📡 Iniciando comunicação com o servidor do OMIE...")
+    aviso_status = st.empty()
+    aviso_status.info("📡 Iniciando varredura no Omie...")
     
-    # 1. Puxar Produtos (Código, Descrição e Características)
+    # 1. Baixar todos os produtos
     url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
     pagina = 1
     produtos_totais = []
     
-    aviso_produtos = st.empty() # Cria uma caixa de texto que se atualiza sozinha
-    
     while True:
-        aviso_produtos.warning(f"📦 Baixando Produtos - Lendo página {pagina}...")
         payload = {
             "call": "ListarProdutos",
             "app_key": app_key,
             "app_secret": app_secret,
-            # Aumentei para 500 registros para ser 5x mais rápido
             "param": [{"pagina": pagina, "registros_por_pagina": 500, "apenas_importado_api": "N", "filtrar_apenas_omiepdv": "N"}]
         }
         try:
             req = requests.post(url_produtos, json=payload, timeout=20)
-            
-            # Checa se o servidor do Omie caiu ou recusou bruscamente
-            if req.status_code != 200:
-                st.error(f"O Omie recusou a conexão (Erro {req.status_code}): {req.text}")
-                return pd.DataFrame()
-                
+            if req.status_code != 200: break
             resposta = req.json()
-            
-            # Checa os erros internos (senhas, permissões, etc)
-            if "faultstring" in resposta:
-                st.error(f"Erro do Omie (Produtos): {resposta['faultstring']}")
-                return pd.DataFrame()
-                
-            total_paginas = resposta.get("total_de_paginas", 1)
-            
             if "produto_servico_cadastro" in resposta:
                 produtos_totais.extend(resposta["produto_servico_cadastro"])
-                
-            if pagina >= total_paginas: 
-                aviso_produtos.success(f"✅ Sucesso! {len(produtos_totais)} produtos baixados da base.")
-                break
-                
+            if pagina >= resposta.get("total_de_paginas", 1): break
             pagina += 1
-        except Exception as e: 
-            st.error(f"Erro no código ao puxar Produtos: {e}")
-            return pd.DataFrame()
+        except: break
 
-    df_produtos = pd.DataFrame([{
-        "Código": p.get("codigo", ""), 
-        "Descrição": p.get("descricao", ""),
-        "Características": p.get("caracteristicas", "")
-    } for p in produtos_totais])
-
-    # 2. Puxar Estoque Físico Real
-    url_estoque = "https://app.omie.com.br/api/v1/estoque/resumo/"
-    data_hoje = datetime.now().strftime("%d/%m/%Y")
-    pagina_est = 1
-    estoque_totais = []
+    # 2. Filtrar SOMENTE quem é instrumento (tem a palavra calibração)
+    instrumentos = [p for p in produtos_totais if "calibração" in str(p.get("caracteristicas", "")).lower()]
+    aviso_status.warning(f"🎯 Consultando estoque cirurgicamente para os {len(instrumentos)} instrumentos...")
     
-    aviso_estoque = st.empty()
-
-    while True:
-        aviso_estoque.warning(f"📊 Baixando Estoque - Lendo página {pagina_est}...")
+    url_estoque = "https://app.omie.com.br/api/v1/estoque/consulta/"
+    estoque_dict = {}
+    
+    for inst in instrumentos:
+        id_omie = inst.get("codigo_produto") # O código interno do servidor Omie
+        cod_tag = inst.get("codigo") # O seu código de TAG visual
+        
+        if not id_omie: continue
+        
         payload_est = {
-            "call": "ListarPosicaoEstoque",
+            "call": "ConsultarEstoqueProduto",
             "app_key": app_key,
             "app_secret": app_secret,
-            "param": [{"data_posicao": data_hoje, "pagina": pagina_est, "registros_por_pagina": 500}]
+            "param": [{"id_prod": id_omie}]
         }
         try:
-            req_est = requests.post(url_estoque, json=payload_est, timeout=20)
+            resp_est = requests.post(url_estoque, json=payload_est, timeout=5).json()
+            # Captura o saldo independente de onde ele venha no pacote do Omie
+            saldo = 0
+            if "saldo" in resp_est:
+                saldo = resp_est["saldo"]
+            elif "listaEstoque" in resp_est and len(resp_est["listaEstoque"]) > 0:
+                saldo = resp_est["listaEstoque"][0].get("saldo", 0)
             
-            if req_est.status_code != 200:
-                st.error(f"O Omie recusou a conexão de estoque (Erro {req_est.status_code}): {req_est.text}")
-                break
-                
-            resp_est = req_est.json()
-            
-            if "faultstring" in resp_est:
-                st.error(f"Erro do Omie (Estoque): {resp_est['faultstring']}")
-                break
+            estoque_dict[cod_tag] = saldo
+        except:
+            estoque_dict[cod_tag] = 0
 
-            total_paginas_est = resp_est.get("total_de_paginas", 1)
+    aviso_status.empty() # Apaga o aviso de carregamento
 
-            if "produtos" in resp_est:
-                estoque_totais.extend(resp_est["produtos"])
-                
-            if pagina_est >= total_paginas_est: 
-                aviso_estoque.success(f"✅ Sucesso! {len(estoque_totais)} saldos de estoque confirmados.")
-                break
-                
-            pagina_est += 1
-        except Exception as e:
-            st.error(f"Erro no código ao puxar Estoque: {e}")
-            break
+    # 3. Montar a planilha final internamente
+    lista_final = []
+    for p in produtos_totais:
+        cod = p.get("codigo", "")
+        lista_final.append({
+            "Código": cod,
+            "Descrição": p.get("descricao", ""),
+            "Características": p.get("caracteristicas", ""),
+            "Estoque Físico": estoque_dict.get(cod, 0)
+        })
 
-    df_estoque = pd.DataFrame([{
-        "Código": e.get("codigo", ""), 
-        "Estoque Físico": e.get("saldo", 0)
-    } for e in estoque_totais])
-
-    # 3. Mesclar as bases e retornar
-    if not df_produtos.empty and not df_estoque.empty:
-        df_final = pd.merge(df_produtos, df_estoque, on="Código", how="left")
-        df_final['Estoque Físico'] = df_final['Estoque Físico'].fillna(0)
-    elif not df_produtos.empty:
-        df_final = df_produtos
-        df_final['Estoque Físico'] = 0
-        
-    st.info("✨ Processamento concluído! Montando painel...")
-    return df_final
+    return pd.DataFrame(lista_final)
 
 def processar_dados(df):
     if df.empty: return df
@@ -208,20 +162,26 @@ def processar_dados(df):
         return None, "SEM DATA"
 
     resultados = df[col_caract].apply(extrair_vencimento)
-    df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
-    df['DATA_CALIBRACAO'] = pd.to_datetime(df['DATA_CALIBRACAO'])
+    
+    # VACINA: Garante que o Python reconheça como formato de data, evitando o crash (.dt)
+    df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
+    
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
     def classificar(row):
         if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
+        if pd.isna(row['DATA_CALIBRACAO']): return "APTOS" # Ignora itens sem data preenchida
         dias = (row['DATA_CALIBRACAO'] - hoje).days
         return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
     df['_ESTOQUE_VAL'] = df[col_estoque]
-    return df
+    
+    # Filtra o painel principal para mostrar SOMENTE instrumentos (itens com data válida ou erro apontado)
+    df_instrumentos = df[df['ALERTA_DATA'] != "SEM DATA"].copy()
+    return df_instrumentos
 
 def enviar_email_consolidado(destinatarios, df_criticos):
     msg = EmailMessage()
@@ -258,14 +218,12 @@ def popup_confirmar_envio(x, y, df_alvo):
     if st.button("Confirmar Envio", use_container_width=True, type="primary"):
         try:
             enviar_email_consolidado(st.session_state.config_emails, df_alvo)
-            st.success("Enviado!")
+            st.success("Enviado com sucesso!")
         except Exception as e: st.error(f"Erro: {e}")
 
-# --- INICIALIZAÇÃO E NAVEGAÇÃO ---
-if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
-if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
-
+# --- NAVEGAÇÃO LATERAL ---
 df = processar_dados(carregar_dados())
+
 st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
@@ -300,7 +258,7 @@ if st.session_state.modulo_ativo == "CONSULTA EC":
 st.sidebar.markdown("---")
 menu = st.session_state.pagina_ativa
 
-# --- PÁGINAS ---
+# --- RENDERIZAÇÃO DAS PÁGINAS ---
 if menu == "🛠️ Visão Geral":
     st.markdown("### 🛠️ Visão Geral de Metrologia")
     c1, c2, c3 = st.columns(3)
@@ -345,7 +303,7 @@ elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
                 popup_confirmar_envio(len(df[df['STATUS']=='PRÓXIMO VENCIMENTO']), len(df[df['STATUS']=='VENCIDO']), df[df['STATUS'].isin(['VENCIDO','PRÓXIMO VENCIMENTO'])])
             else:
                 enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
-                st.success("Enviado!")
+                st.success("Enviado com sucesso!")
 
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
