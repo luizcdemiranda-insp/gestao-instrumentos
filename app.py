@@ -17,50 +17,44 @@ st.markdown("""
     .stApp { background-color: #0a192f; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #112240; border-right: 1px solid #233554; }
     
-    /* Painel de Navegação (Transforma TODOS os st.radio em botões) */
-    div[role="radiogroup"] > label > div:first-child { display: none; }
-    div[role="radiogroup"] > label {
-        background-color: #112240; border: 1px solid #233554; padding: 10px 20px;
-        border-radius: 8px; margin-bottom: 8px; font-weight: bold; transition: 0.3s;
-        display: flex; align-items: center; justify-content: flex-start; 
-        width: 100%; color: #b0b4c4; cursor: pointer; text-align: left;
+    /* 1. Botões Principais no Sidebar (Substituindo o padrão do Streamlit) */
+    section[data-testid="stSidebar"] div.stButton > button {
+        background-color: #112240; border: 1px solid #233554; padding: 12px 20px;
+        border-radius: 8px; font-weight: bold; transition: 0.3s;
+        justify-content: flex-start; text-align: left; color: #b0b4c4; width: 100%;
     }
-    div[role="radiogroup"] > label:hover { border-color: #ff9800; color: white; }
-    div[role="radiogroup"] > label:has(input:checked) {
+    section[data-testid="stSidebar"] div.stButton > button:hover { border-color: #ff9800; color: white; }
+    section[data-testid="stSidebar"] div.stButton > button[data-testid="baseButton-primary"] {
         background-color: #ff9800; color: white; border-color: #ff9800;
         box-shadow: 0 0 10px rgba(255, 152, 0, 0.4);
     }
 
-    /* Indicadores Compactos */
-    .kpi-container {
-        padding: 12px; border-radius: 10px; text-align: center;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px;
-        border: 1px solid rgba(255,255,255,0.05);
+    /* 2. Sub-menu (Menu Acordeão da Metrologia) */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child { display: none; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        background-color: transparent; border: none; padding: 8px 10px 8px 45px;
+        margin-bottom: 0px; font-weight: normal; transition: 0.2s;
+        display: flex; align-items: center; justify-content: flex-start; 
+        width: 100%; color: #8a91a8; cursor: pointer; border-left: 4px solid transparent;
+        border-radius: 0; box-shadow: none;
     }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover { color: white; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
+        color: #ff9800; border-left: 4px solid #ff9800; background-color: rgba(255, 152, 0, 0.05);
+        font-weight: bold; box-shadow: none;
+    }
+
+    /* Indicadores Compactos e Cards (Mantidos do original) */
+    .kpi-container { padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); }
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
 
-    /* Estilo Base dos Cards */
-    .card-instrumento {
-        background-color: #112240; border-radius: 8px; padding: 10px;
-        margin-bottom: 5px; border-left: 5px solid #ccc;
-        opacity: 0.7; transition: all 0.3s ease;
-    }
-    
-    /* Cores das Categorias */
+    .card-instrumento { background-color: #112240; border-radius: 8px; padding: 10px; margin-bottom: 5px; border-left: 5px solid #ccc; opacity: 0.7; transition: all 0.3s ease; }
     .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #2a1616, #112240); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2a2510, #112240); }
     .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #102416, #112240); opacity: 1; }
-
-    /* ESTADO: SELECIONADO (O card "acende" em laranja) */
-    .card-selecionado {
-        border: 2px solid #ff9800 !important;
-        box-shadow: 0 0 15px rgba(255, 152, 0, 0.6) !important;
-        transform: scale(1.02);
-        opacity: 1 !important;
-        background: linear-gradient(to right, #332100, #112240) !important;
-    }
-
+    .card-selecionado { border: 2px solid #ff9800 !important; box-shadow: 0 0 15px rgba(255, 152, 0, 0.6) !important; transform: scale(1.02); opacity: 1 !important; background: linear-gradient(to right, #332100, #112240) !important; }
+    
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
     .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
     .apto-kpi { color: #2ecc71; border-bottom: 3px solid #2ecc71; }
@@ -93,28 +87,23 @@ def processar_dados(df):
     
     def extrair_vencimento(texto):
         if pd.isna(texto): return None, "SEM DATA"
-        
-        # 1. Tenta buscar "Data da Próxima Calibração"
         match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
         if match_prox:
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             if pd.notna(dt): return dt, None
             else: return None, "DATA ERRADA"
         
-        # 2. Se não, tenta buscar "Data da Última Calibração" e soma 1 ano
         match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
         if match_ultima:
             dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
             if pd.notna(dt_ult): return dt_ult + relativedelta(years=1), None
             else: return None, "DATA ERRADA"
         
-        # 3. Se nada for encontrado
         return None, "SEM DATA"
 
     resultados = df[col_caract].apply(extrair_vencimento)
     df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
     df['ALERTA_DATA'] = [x[1] for x in resultados]
-    
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
@@ -183,30 +172,43 @@ config_atual = carregar_config()
 if 'config_emails' not in st.session_state: st.session_state.config_emails = config_atual["emails"]
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
+# Variáveis para controlar o menu acordeão
+if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
+if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
+
 df = processar_dados(carregar_dados())
 
-# --- NAVEGAÇÃO ESTRUTURADA (TUDO EM BOTÕES) ---
+# --- NAVEGAÇÃO ESTRUTURADA (ACORDEÃO INTERATIVO) ---
 st.sidebar.markdown("<h3 style='color: white;'>SISTEMA DE MONITORAMENTO</h3>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-st.sidebar.markdown("#### 📂 MÓDULO PRINCIPAL")
-# Usando st.radio para os botões principais para que peguem o CSS de botão
-modulo = st.sidebar.radio("Selecione o módulo", ["📏 METROLOGIA", "🔍 CONSULTA EC"], label_visibility="collapsed")
+# Botão 1: Módulo Metrologia
+btn_metro_type = "primary" if st.session_state.modulo_ativo == "METROLOGIA" else "secondary"
+if st.sidebar.button("📏 METROLOGIA", use_container_width=True, type=btn_metro_type):
+    st.session_state.modulo_ativo = "METROLOGIA"
+    if st.session_state.pagina_ativa == "🔍 CONSULTA EC":
+        st.session_state.pagina_ativa = "🛠️ Visão Geral" # Abre no default da Metrologia
+    st.rerun()
+
+# Se Metrologia estiver ativa, exibe o sub-menu (que "empurra" o botão de baixo)
+if st.session_state.modulo_ativo == "METROLOGIA":
+    paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"]
+    idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
+    escolha_sub = st.sidebar.radio("Sub", paginas_metro, index=idx, label_visibility="collapsed")
+    
+    if escolha_sub != st.session_state.pagina_ativa:
+        st.session_state.pagina_ativa = escolha_sub
+        st.rerun()
+
+# Botão 2: Módulo Consulta EC
+btn_ec_type = "primary" if st.session_state.modulo_ativo == "CONSULTA EC" else "secondary"
+if st.sidebar.button("🔍 CONSULTA EC", use_container_width=True, type=btn_ec_type):
+    st.session_state.modulo_ativo = "CONSULTA EC"
+    st.session_state.pagina_ativa = "🔍 CONSULTA EC"
+    st.rerun()
 
 st.sidebar.markdown("---")
-
-# Lógica de Roteamento baseada no Módulo
-if modulo == "📏 METROLOGIA":
-    st.sidebar.markdown("#### ↳ PÁGINAS DA METROLOGIA")
-    # Sub-botões que aparecem apenas se Metrologia estiver selecionada
-    menu = st.sidebar.radio(
-        "Navegação Metrologia", 
-        ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"], 
-        label_visibility="collapsed"
-    )
-else:
-    # Se escolher CONSULTA EC, direciona direto para a página
-    menu = "🔍 CONSULTA EC"
+menu = st.session_state.pagina_ativa
 
 # --- PÁGINAS ---
 if menu == "🛠️ Visão Geral":
@@ -264,4 +266,36 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
                 qtd_prox = len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'])
                 qtd_venc = len(df[df['STATUS'] == 'VENCIDO'])
                 df_nao_aptos = df[df['STATUS'].isin(['PRÓXIMO VENCIMENTO', 'VENCIDO'])]
-                popup_confirmar_env
+                popup_confirmar_envio(qtd_prox, qtd_venc, df_nao_aptos)
+
+    cols = st.columns(4)
+    for i, (idx, row) in enumerate(df_f.iterrows()):
+        with cols[i % 4]:
+            is_selected = idx in st.session_state.selecionados
+            card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
+            
+            if row['DATA_STR'] == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
+            elif row['DATA_STR'] == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
+            else: data_exibicao = f"📅 {row['DATA_STR']}"
+            
+            st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
+            
+            if is_selected:
+                if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
+                    st.session_state.selecionados.remove(idx)
+                    st.rerun()
+            else:
+                if st.button("⭕ Selecionar", key=f"btn_{idx}", use_container_width=True):
+                    st.session_state.selecionados.append(idx)
+                    st.rerun()
+
+elif menu == "⚙️ Ajustes":
+    st.markdown("### ⚙️ Configurações (Metrologia)")
+    st.markdown("#### 📧 E-mails de Alerta")
+    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
+    if st.button("Salvar E-mails"):
+        if novos_emails:
+            st.session_state.config_emails = novos_emails
+            salvar_config(st.session_state.config_emails)
+            st.success("E-mails memorizados com sucesso!")
+    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
