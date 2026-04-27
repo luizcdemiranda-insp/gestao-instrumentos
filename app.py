@@ -12,7 +12,6 @@ from dateutil.relativedelta import relativedelta
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 # --- INICIALIZAÇÃO DE MEMÓRIA ---
-if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
@@ -75,13 +74,6 @@ def processar_dados(df):
     if df.empty: return df
     
     col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
-    col_estoque = next((c for c in df.columns if 'ESTOQUE' in c.upper()), "Estoque Físico")
-    
-    # Previne erros se a coluna de estoque não existir na planilha ainda
-    if col_estoque not in df.columns:
-        df[col_estoque] = 0
-        
-    df[col_estoque] = pd.to_numeric(df[col_estoque], errors='coerce').fillna(0)
     
     def extrair_vencimento(texto):
         if pd.isna(texto): return None, "SEM DATA"
@@ -111,7 +103,6 @@ def processar_dados(df):
         return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
-    df['_ESTOQUE_VAL'] = df[col_estoque]
     
     return df
 
@@ -159,33 +150,17 @@ df = processar_dados(carregar_dados())
 st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-btn_metro_type = "primary" if st.session_state.modulo_ativo == "METROLOGIA" else "secondary"
-if st.sidebar.button("📏 METROLOGIA", use_container_width=True, type=btn_metro_type):
-    st.session_state.modulo_ativo = "METROLOGIA"
-    st.session_state.pagina_ativa = "🛠️ Visão Geral"
+# Botão Principal Único (Metrologia)
+st.sidebar.button("📏 METROLOGIA", use_container_width=True, type="primary")
+
+# Sub-menu de Metrologia (Sempre visível agora)
+paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"]
+idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
+escolha = st.sidebar.radio("SubMetro", paginas_metro, index=idx, label_visibility="collapsed")
+
+if escolha != st.session_state.pagina_ativa:
+    st.session_state.pagina_ativa = escolha
     st.rerun()
-
-if st.session_state.modulo_ativo == "METROLOGIA":
-    paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"]
-    idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
-    escolha = st.sidebar.radio("SubMetro", paginas_metro, index=idx, label_visibility="collapsed")
-    if escolha != st.session_state.pagina_ativa:
-        st.session_state.pagina_ativa = escolha
-        st.rerun()
-
-btn_ec_type = "primary" if st.session_state.modulo_ativo == "CONSULTA EC" else "secondary"
-if st.sidebar.button("🔍 CONSULTA EC", use_container_width=True, type=btn_ec_type):
-    st.session_state.modulo_ativo = "CONSULTA EC"
-    st.session_state.pagina_ativa = "✅ DISPONÍVEIS"
-    st.rerun()
-
-if st.session_state.modulo_ativo == "CONSULTA EC":
-    paginas_ec = ["✅ DISPONÍVEIS", "❌ FORA ESTOQUE"]
-    idx = paginas_ec.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_ec else 0
-    escolha = st.sidebar.radio("SubEC", paginas_ec, index=idx, label_visibility="collapsed")
-    if escolha != st.session_state.pagina_ativa:
-        st.session_state.pagina_ativa = escolha
-        st.rerun()
 
 st.sidebar.markdown("---")
 menu = st.session_state.pagina_ativa
@@ -197,17 +172,12 @@ if menu == "🛠️ Visão Geral":
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
     with c3: render_mini_kpi("Vencidos", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
-    st.dataframe(df.drop(columns=['_ESTOQUE_VAL', 'DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
+    st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
 
-elif menu in ["✅ APTOS", "✅ DISPONÍVEIS", "❌ FORA ESTOQUE"]:
-    classe_card = "apto-card" if menu != "❌ FORA ESTOQUE" else "vencido-card"
+elif menu == "✅ APTOS":
     st.markdown(f"### {menu}")
-    
     fn, fc, fd = sistema_filtros(menu, True)
     df_f = df[df['STATUS'] == 'APTOS']
-    
-    if menu == "✅ DISPONÍVEIS": df_f = df_f[df_f['_ESTOQUE_VAL'] > 0]
-    if menu == "❌ FORA ESTOQUE": df_f = df_f[df_f['_ESTOQUE_VAL'] <= 0]
     
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
     if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
@@ -216,8 +186,7 @@ elif menu in ["✅ APTOS", "✅ DISPONÍVEIS", "❌ FORA ESTOQUE"]:
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            estoque_texto = f"Estoque: {row['_ESTOQUE_VAL']}"
-            st.markdown(f"<div class='card-instrumento {classe_card}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']} | 📦 {estoque_texto}</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card-instrumento apto-card'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']}</span></div>", unsafe_allow_html=True)
 
 elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
     status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos de vencer" else "VENCIDO"
@@ -230,7 +199,7 @@ elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
     if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
 
     if menu == "🚨 VENCIDOS":
-        if st.button("🚨 Alerta em Lote", use_container_width=True):
+        if st.button("🚨 Alerta em Lote", key="btn_alerta_lote", use_container_width=True):
             if not st.session_state.selecionados:
                 popup_confirmar_envio(len(df[df['STATUS']=='PRÓXIMO VENCIMENTO']), len(df[df['STATUS']=='VENCIDO']), df[df['STATUS'].isin(['VENCIDO','PRÓXIMO VENCIMENTO'])])
             else:
