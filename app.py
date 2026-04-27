@@ -99,7 +99,7 @@ def processar_dados(df):
         if match_prox:
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             if pd.notna(dt): return dt, None
-            else: return None, "DATA ERRADA" # O padrão bateu, mas a data é inválida
+            else: return None, "DATA ERRADA"
         
         # 2. Se não, tenta buscar "Data da Última Calibração" e soma 1 ano
         match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
@@ -115,12 +115,10 @@ def processar_dados(df):
     df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
-    # Preenche a string com a data formatada ou com o alerta ("SEM DATA" / "DATA ERRADA")
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
     def classificar(row):
-        # Itens com erro de digitação ou sem data vão direto para VENCIDOS para chamar atenção
         if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
         dias = (row['DATA_CALIBRACAO'] - hoje).days
         if dias < 0: return "VENCIDO"
@@ -185,12 +183,24 @@ config_atual = carregar_config()
 if 'config_emails' not in st.session_state: st.session_state.config_emails = config_atual["emails"]
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
-# --- NAVEGAÇÃO ---
-st.sidebar.markdown("<h3 style='color: white;'>SISTEMA DE MONITORAMENTO DE INSTRUMENTOS</h3>", unsafe_allow_html=True)
-st.sidebar.markdown("---")
-menu = st.sidebar.radio("Painel de navegação", ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"], index=0)
-
 df = processar_dados(carregar_dados())
+
+# --- NAVEGAÇÃO ESTRUTURADA (MÓDULOS E SUBPÁGINAS) ---
+st.sidebar.markdown("<h3 style='color: white;'>SISTEMA DE MONITORAMENTO</h3>", unsafe_allow_html=True)
+st.sidebar.markdown("---")
+
+modulo = st.sidebar.selectbox("📂 MÓDULO PRINCIPAL", ["🛠️ Visão Geral", "📏 METROLOGIA", "🔍 CONSULTA EC"])
+
+# Lógica de Roteamento baseada no Módulo
+if modulo == "📏 METROLOGIA":
+    st.sidebar.markdown("#### ↳ Páginas de Metrologia")
+    menu = st.sidebar.radio(
+        "Navegação Metrologia", 
+        ["✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"], 
+        label_visibility="collapsed"
+    )
+else:
+    menu = modulo
 
 # --- PÁGINAS ---
 if menu == "🛠️ Visão Geral":
@@ -201,15 +211,22 @@ if menu == "🛠️ Visão Geral":
     with c3: render_mini_kpi("Vencidos", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
     st.dataframe(df, use_container_width=True)
 
-elif menu == "✅ APTOS":
-    st.markdown("### ✅ Instrumentos Aptos")
-    fn, fc, fd = sistema_filtros("aptos", mostrar_botao_limpar=True)
+elif menu == "✅ APTOS" or menu == "🔍 CONSULTA EC":
+    # Define títulos e chaves de sessão exclusivas para cada página não misturar os filtros
+    if menu == "✅ APTOS":
+        st.markdown("### ✅ Instrumentos Aptos (Metrologia)")
+        sufixo_chave = "aptos"
+    else:
+        st.markdown("### 🔍 Consulta de Equipamentos Conformes (EC)")
+        sufixo_chave = "consulta_ec"
+        
+    fn, fc, fd = sistema_filtros(sufixo_chave, mostrar_botao_limpar=True)
     df_f = df[df['STATUS'] == 'APTOS']
     if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
     if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
     if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
     
-    render_mini_kpi("Total Aptos", len(df_f), "apto-kpi")
+    render_mini_kpi("Total Encontrado", len(df_f), "apto-kpi")
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
@@ -251,12 +268,9 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
             card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
             
             # Tratamento visual individualizado para o erro
-            if row['DATA_STR'] == "SEM DATA":
-                data_exibicao = "⚠️ SEM DATA"
-            elif row['DATA_STR'] == "DATA ERRADA":
-                data_exibicao = "❌ DATA ERRADA"
-            else:
-                data_exibicao = f"📅 {row['DATA_STR']}"
+            if row['DATA_STR'] == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
+            elif row['DATA_STR'] == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
+            else: data_exibicao = f"📅 {row['DATA_STR']}"
             
             st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
             
@@ -270,7 +284,7 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
                     st.rerun()
 
 elif menu == "⚙️ Ajustes":
-    st.markdown("### ⚙️ Configurações")
+    st.markdown("### ⚙️ Configurações (Metrologia)")
     st.markdown("#### 📧 E-mails de Alerta")
     novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
     if st.button("Salvar E-mails"):
