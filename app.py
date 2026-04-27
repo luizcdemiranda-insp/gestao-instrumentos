@@ -6,13 +6,12 @@ import smtplib
 from email.message import EmailMessage
 import json
 import os
-import requests
 from dateutil.relativedelta import relativedelta
 
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
-# --- INICIALIZAÇÃO DE MEMÓRIA (BLINDAGEM CONTRA ERROS) ---
+# --- INICIALIZAÇÃO DE MEMÓRIA ---
 if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
@@ -62,100 +61,26 @@ st.markdown("""
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CONEXÃO DIRETA COM OMIE (MÉTODO SNIPER + FILTRO DE FAMÍLIA) ---
-@st.cache_data(ttl=600, show_spinner=False)
+# --- CARREGAMENTO RÁPIDO VIA PLANILHA ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
+
+@st.cache_data(ttl=600)
 def carregar_dados():
-    app_key = "6531794134866"
-    app_secret = "5d3f1060b0b5c474561b7e23adf747ef"
-    
-    aviso_status = st.empty()
-    aviso_status.info("📡 Iniciando varredura no Omie...")
-    
-    # 1. Baixar o índice de todos os produtos
-    url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
-    pagina = 1
-    produtos_totais = []
-    
-    while True:
-        payload = {
-            "call": "ListarProdutos",
-            "app_key": app_key,
-            "app_secret": app_secret,
-            "param": [{"pagina": pagina, "registros_por_pagina": 500, "apenas_importado_api": "N", "filtrar_apenas_omiepdv": "N"}]
-        }
-        try:
-            req = requests.post(url_produtos, json=payload, timeout=20)
-            if req.status_code != 200: break
-            resposta = req.json()
-            if "produto_servico_cadastro" in resposta:
-                produtos_totais.extend(resposta["produto_servico_cadastro"])
-            if pagina >= resposta.get("total_de_paginas", 1): break
-            pagina += 1
-        except: break
-
-    # 2. Filtrar SOMENTE as famílias INSTRUMENTOS e EQUIPAMENTO DE IÇAMENTO
-    familias_alvo = ["INSTRUMENTOS", "EQUIPAMENTO DE IÇAMENTO", "EQUIPAMENTOS DE IÇAMENTO"]
-    instrumentos_filtrados = []
-    
-    for p in produtos_totais:
-        # Traz a família cadastrada no Omie e transforma em maiúscula para evitar erros de digitação
-        familia_produto = str(p.get("descricao_familia", "")).upper()
-        
-        # Se a família do produto contiver alguma das nossas palavras-alvo, ele entra na lista VIP
-        if any(f in familia_produto for f in familias_alvo):
-            instrumentos_filtrados.append(p)
-            
-    aviso_status.warning(f"🎯 Famílias encontradas! Consultando estoque cirurgicamente para os {len(instrumentos_filtrados)} itens...")
-    
-    # 3. Consultar estoque apenas dos itens selecionados
-    url_estoque = "https://app.omie.com.br/api/v1/estoque/consulta/"
-    estoque_dict = {}
-    
-    for inst in instrumentos_filtrados:
-        id_omie = inst.get("codigo_produto") 
-        cod_tag = inst.get("codigo") 
-        
-        if not id_omie: continue
-        
-        payload_est = {
-            "call": "ConsultarEstoqueProduto",
-            "app_key": app_key,
-            "app_secret": app_secret,
-            "param": [{"id_prod": id_omie}]
-        }
-        try:
-            resp_est = requests.post(url_estoque, json=payload_est, timeout=5).json()
-            saldo = 0
-            if "saldo" in resp_est:
-                saldo = resp_est["saldo"]
-            elif "listaEstoque" in resp_est and len(resp_est["listaEstoque"]) > 0:
-                saldo = resp_est["listaEstoque"][0].get("saldo", 0)
-            
-            estoque_dict[cod_tag] = saldo
-        except:
-            estoque_dict[cod_tag] = 0
-
-    aviso_status.empty() 
-
-    # 4. Montar a base de dados final apenas com os itens de interesse
-    lista_final = []
-    for p in instrumentos_filtrados:
-        cod = p.get("codigo", "")
-        lista_final.append({
-            "Código": cod,
-            "Descrição": p.get("descricao", ""),
-            "Características": p.get("caracteristicas", ""),
-            "Estoque Físico": estoque_dict.get(cod, 0),
-            "Família": p.get("descricao_familia", "")
-        })
-
-    return pd.DataFrame(lista_final)
+    try: 
+        return pd.read_csv(SHEET_URL)
+    except: 
+        return pd.DataFrame()
 
 def processar_dados(df):
     if df.empty: return df
     
-    col_caract = "Características"
-    col_estoque = "Estoque Físico"
+    col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
+    col_estoque = next((c for c in df.columns if 'ESTOQUE' in c.upper()), "Estoque Físico")
+    
+    # Previne erros se a coluna de estoque não existir na planilha ainda
+    if col_estoque not in df.columns:
+        df[col_estoque] = 0
+        
     df[col_estoque] = pd.to_numeric(df[col_estoque], errors='coerce').fillna(0)
     
     def extrair_vencimento(texto):
