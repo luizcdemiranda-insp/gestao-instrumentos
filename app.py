@@ -78,7 +78,7 @@ def carregar_config():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CARGA E PROCESSAMENTO HIERÁRQUICO ---
+# --- CARGA E PROCESSAMENTO HIERÁRQUICO COM BLINDAGEM ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
@@ -92,27 +92,36 @@ def processar_dados(df):
     col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
     
     def extrair_vencimento(texto):
-        if pd.isna(texto): return None, "SEM DATA DE CALIBRACAO"
+        if pd.isna(texto): return None, "SEM DATA"
         
+        # 1. Tenta buscar "Data da Próxima Calibração"
         match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
-        if match_prox: return pd.to_datetime(match_prox.group(1), dayfirst=True), None
+        if match_prox:
+            dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
+            if pd.notna(dt): return dt, None
+            else: return None, "DATA ERRADA" # O padrão bateu, mas a data é inválida
         
+        # 2. Se não, tenta buscar "Data da Última Calibração" e soma 1 ano
         match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
         if match_ultima:
-            data_ultima = pd.to_datetime(match_ultima.group(1), dayfirst=True)
-            return data_ultima + relativedelta(years=1), None
+            dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
+            if pd.notna(dt_ult): return dt_ult + relativedelta(years=1), None
+            else: return None, "DATA ERRADA"
         
-        return None, "SEM DATA DE CALIBRACAO"
+        # 3. Se nada for encontrado
+        return None, "SEM DATA"
 
     resultados = df[col_caract].apply(extrair_vencimento)
     df['DATA_CALIBRACAO'] = [x[0] for x in resultados]
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
+    # Preenche a string com a data formatada ou com o alerta ("SEM DATA" / "DATA ERRADA")
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
     def classificar(row):
-        if row['ALERTA_DATA'] == "SEM DATA DE CALIBRACAO": return "VENCIDO"
+        # Itens com erro de digitação ou sem data vão direto para VENCIDOS para chamar atenção
+        if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
         dias = (row['DATA_CALIBRACAO'] - hoje).days
         if dias < 0: return "VENCIDO"
         if dias <= 30: return "PRÓXIMO VENCIMENTO"
@@ -157,9 +166,9 @@ def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
 # --- FUNÇÃO DE POP-UP (DIALOG) ---
 @st.dialog("Confirmação de Envio em Lote")
 def popup_confirmar_envio(x, y, df_alvo):
-    st.write("Será enviado um e-mail uma relação completa de todos os instrumentos não aptos:")
+    st.write("Será enviado um e-mail com uma relação completa de todos os instrumentos não aptos:")
     st.write(f"**# {x} Próximos de vencer**")
-    st.write(f"**# {y} Vencidos**")
+    st.write(f"**# {y} Vencidos / Pendências**")
     
     col1, col2 = st.columns(2)
     if col1.button("Cancelar", use_container_width=True):
@@ -230,7 +239,6 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
                     st.success(f"Alerta enviado para {len(st.session_state.selecionados)} itens selecionados!")
                 except Exception as e: st.error(f"Erro no envio: {e}")
             else:
-                # Dispara o Pop-up se nada estiver marcado
                 qtd_prox = len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'])
                 qtd_venc = len(df[df['STATUS'] == 'VENCIDO'])
                 df_nao_aptos = df[df['STATUS'].isin(['PRÓXIMO VENCIMENTO', 'VENCIDO'])]
@@ -241,7 +249,14 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
         with cols[i % 4]:
             is_selected = idx in st.session_state.selecionados
             card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
-            data_exibicao = "⚠️ SEM DATA" if row['DATA_STR'] == "SEM DATA DE CALIBRACAO" else f"📅 {row['DATA_STR']}"
+            
+            # Tratamento visual individualizado para o erro
+            if row['DATA_STR'] == "SEM DATA":
+                data_exibicao = "⚠️ SEM DATA"
+            elif row['DATA_STR'] == "DATA ERRADA":
+                data_exibicao = "❌ DATA ERRADA"
+            else:
+                data_exibicao = f"📅 {row['DATA_STR']}"
             
             st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
             
