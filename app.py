@@ -17,7 +17,7 @@ st.markdown("""
     .stApp { background-color: #0a192f; color: #e0e0e0; }
     section[data-testid="stSidebar"] { background-color: #112240; border-right: 1px solid #233554; }
     
-    /* Painel de Navegação (Destaques em Laranja) */
+    /* Painel de Navegação (Transforma TODOS os st.radio em botões) */
     div[role="radiogroup"] > label > div:first-child { display: none; }
     div[role="radiogroup"] > label {
         background-color: #112240; border: 1px solid #233554; padding: 10px 20px;
@@ -185,26 +185,32 @@ if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
 df = processar_dados(carregar_dados())
 
-# --- NAVEGAÇÃO ESTRUTURADA (MÓDULOS E SUBPÁGINAS) ---
+# --- NAVEGAÇÃO ESTRUTURADA (TUDO EM BOTÕES) ---
 st.sidebar.markdown("<h3 style='color: white;'>SISTEMA DE MONITORAMENTO</h3>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-modulo = st.sidebar.selectbox("📂 MÓDULO PRINCIPAL", ["🛠️ Visão Geral", "📏 METROLOGIA", "🔍 CONSULTA EC"])
+st.sidebar.markdown("#### 📂 MÓDULO PRINCIPAL")
+# Usando st.radio para os botões principais para que peguem o CSS de botão
+modulo = st.sidebar.radio("Selecione o módulo", ["📏 METROLOGIA", "🔍 CONSULTA EC"], label_visibility="collapsed")
+
+st.sidebar.markdown("---")
 
 # Lógica de Roteamento baseada no Módulo
 if modulo == "📏 METROLOGIA":
-    st.sidebar.markdown("#### ↳ Páginas de Metrologia")
+    st.sidebar.markdown("#### ↳ PÁGINAS DA METROLOGIA")
+    # Sub-botões que aparecem apenas se Metrologia estiver selecionada
     menu = st.sidebar.radio(
         "Navegação Metrologia", 
-        ["✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"], 
+        ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"], 
         label_visibility="collapsed"
     )
 else:
-    menu = modulo
+    # Se escolher CONSULTA EC, direciona direto para a página
+    menu = "🔍 CONSULTA EC"
 
 # --- PÁGINAS ---
 if menu == "🛠️ Visão Geral":
-    st.markdown("### 🛠️ Dashboard Geral")
+    st.markdown("### 🛠️ Dashboard Geral (Metrologia)")
     c1, c2, c3 = st.columns(3)
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
@@ -212,7 +218,6 @@ if menu == "🛠️ Visão Geral":
     st.dataframe(df, use_container_width=True)
 
 elif menu == "✅ APTOS" or menu == "🔍 CONSULTA EC":
-    # Define títulos e chaves de sessão exclusivas para cada página não misturar os filtros
     if menu == "✅ APTOS":
         st.markdown("### ✅ Instrumentos Aptos (Metrologia)")
         sufixo_chave = "aptos"
@@ -259,37 +264,4 @@ elif menu == "⏳ Próximos de vencer" or menu == "🚨 VENCIDOS":
                 qtd_prox = len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO'])
                 qtd_venc = len(df[df['STATUS'] == 'VENCIDO'])
                 df_nao_aptos = df[df['STATUS'].isin(['PRÓXIMO VENCIMENTO', 'VENCIDO'])]
-                popup_confirmar_envio(qtd_prox, qtd_venc, df_nao_aptos)
-
-    cols = st.columns(4)
-    for i, (idx, row) in enumerate(df_f.iterrows()):
-        with cols[i % 4]:
-            is_selected = idx in st.session_state.selecionados
-            card_class = f"{classe_card} card-selecionado" if is_selected else classe_card
-            
-            # Tratamento visual individualizado para o erro
-            if row['DATA_STR'] == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
-            elif row['DATA_STR'] == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
-            else: data_exibicao = f"📅 {row['DATA_STR']}"
-            
-            st.markdown(f"<div class='card-instrumento {card_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
-            
-            if is_selected:
-                if st.button("✅ SELECIONADO", key=f"btn_{idx}", use_container_width=True, type="primary"):
-                    st.session_state.selecionados.remove(idx)
-                    st.rerun()
-            else:
-                if st.button("⭕ Selecionar", key=f"btn_{idx}", use_container_width=True):
-                    st.session_state.selecionados.append(idx)
-                    st.rerun()
-
-elif menu == "⚙️ Ajustes":
-    st.markdown("### ⚙️ Configurações (Metrologia)")
-    st.markdown("#### 📧 E-mails de Alerta")
-    novos_emails = st.text_input("Digitar novos e-mails (separados por vírgula):", value="", key="set_emails")
-    if st.button("Salvar E-mails"):
-        if novos_emails:
-            st.session_state.config_emails = novos_emails
-            salvar_config(st.session_state.config_emails)
-            st.success("E-mails memorizados com sucesso!")
-    st.info(f"**E-mails configurados atualmente:** {st.session_state.config_emails}")
+                popup_confirmar_env
