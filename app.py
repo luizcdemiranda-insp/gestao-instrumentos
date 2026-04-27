@@ -13,7 +13,6 @@ from dateutil.relativedelta import relativedelta
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
 # --- INICIALIZAÇÃO DE MEMÓRIA (BLINDAGEM CONTRA ERROS) ---
-# Fica no topo para garantir que o menu nunca quebre
 if 'modulo_ativo' not in st.session_state: st.session_state.modulo_ativo = "METROLOGIA"
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
@@ -63,7 +62,7 @@ st.markdown("""
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CONEXÃO DIRETA COM OMIE (MÉTODO SNIPER) ---
+# --- CONEXÃO DIRETA COM OMIE (MÉTODO SNIPER + FILTRO DE FAMÍLIA) ---
 @st.cache_data(ttl=600, show_spinner=False)
 def carregar_dados():
     app_key = "6531794134866"
@@ -72,7 +71,7 @@ def carregar_dados():
     aviso_status = st.empty()
     aviso_status.info("📡 Iniciando varredura no Omie...")
     
-    # 1. Baixar todos os produtos
+    # 1. Baixar o índice de todos os produtos
     url_produtos = "https://app.omie.com.br/api/v1/geral/produtos/"
     pagina = 1
     produtos_totais = []
@@ -94,16 +93,27 @@ def carregar_dados():
             pagina += 1
         except: break
 
-    # 2. Filtrar SOMENTE quem é instrumento (tem a palavra calibração)
-    instrumentos = [p for p in produtos_totais if "calibração" in str(p.get("caracteristicas", "")).lower()]
-    aviso_status.warning(f"🎯 Consultando estoque cirurgicamente para os {len(instrumentos)} instrumentos...")
+    # 2. Filtrar SOMENTE as famílias INSTRUMENTOS e EQUIPAMENTO DE IÇAMENTO
+    familias_alvo = ["INSTRUMENTOS", "EQUIPAMENTO DE IÇAMENTO", "EQUIPAMENTOS DE IÇAMENTO"]
+    instrumentos_filtrados = []
     
+    for p in produtos_totais:
+        # Traz a família cadastrada no Omie e transforma em maiúscula para evitar erros de digitação
+        familia_produto = str(p.get("descricao_familia", "")).upper()
+        
+        # Se a família do produto contiver alguma das nossas palavras-alvo, ele entra na lista VIP
+        if any(f in familia_produto for f in familias_alvo):
+            instrumentos_filtrados.append(p)
+            
+    aviso_status.warning(f"🎯 Famílias encontradas! Consultando estoque cirurgicamente para os {len(instrumentos_filtrados)} itens...")
+    
+    # 3. Consultar estoque apenas dos itens selecionados
     url_estoque = "https://app.omie.com.br/api/v1/estoque/consulta/"
     estoque_dict = {}
     
-    for inst in instrumentos:
-        id_omie = inst.get("codigo_produto") # O código interno do servidor Omie
-        cod_tag = inst.get("codigo") # O seu código de TAG visual
+    for inst in instrumentos_filtrados:
+        id_omie = inst.get("codigo_produto") 
+        cod_tag = inst.get("codigo") 
         
         if not id_omie: continue
         
@@ -115,7 +125,6 @@ def carregar_dados():
         }
         try:
             resp_est = requests.post(url_estoque, json=payload_est, timeout=5).json()
-            # Captura o saldo independente de onde ele venha no pacote do Omie
             saldo = 0
             if "saldo" in resp_est:
                 saldo = resp_est["saldo"]
@@ -126,17 +135,18 @@ def carregar_dados():
         except:
             estoque_dict[cod_tag] = 0
 
-    aviso_status.empty() # Apaga o aviso de carregamento
+    aviso_status.empty() 
 
-    # 3. Montar a planilha final internamente
+    # 4. Montar a base de dados final apenas com os itens de interesse
     lista_final = []
-    for p in produtos_totais:
+    for p in instrumentos_filtrados:
         cod = p.get("codigo", "")
         lista_final.append({
             "Código": cod,
             "Descrição": p.get("descricao", ""),
             "Características": p.get("caracteristicas", ""),
-            "Estoque Físico": estoque_dict.get(cod, 0)
+            "Estoque Físico": estoque_dict.get(cod, 0),
+            "Família": p.get("descricao_familia", "")
         })
 
     return pd.DataFrame(lista_final)
@@ -163,7 +173,6 @@ def processar_dados(df):
 
     resultados = df[col_caract].apply(extrair_vencimento)
     
-    # VACINA: Garante que o Python reconheça como formato de data, evitando o crash (.dt)
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
@@ -172,16 +181,14 @@ def processar_dados(df):
     
     def classificar(row):
         if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
-        if pd.isna(row['DATA_CALIBRACAO']): return "APTOS" # Ignora itens sem data preenchida
+        if pd.isna(row['DATA_CALIBRACAO']): return "APTOS" 
         dias = (row['DATA_CALIBRACAO'] - hoje).days
         return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
     df['_ESTOQUE_VAL'] = df[col_estoque]
     
-    # Filtra o painel principal para mostrar SOMENTE instrumentos (itens com data válida ou erro apontado)
-    df_instrumentos = df[df['ALERTA_DATA'] != "SEM DATA"].copy()
-    return df_instrumentos
+    return df
 
 def enviar_email_consolidado(destinatarios, df_criticos):
     msg = EmailMessage()
