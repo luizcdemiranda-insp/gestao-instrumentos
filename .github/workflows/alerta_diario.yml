@@ -3,7 +3,7 @@ name: Disparo Diário de Alertas
 on:
   schedule:
     # Este horário está em UTC. 11:00 UTC = 08:00 no horário de Brasília.
-    - cron: '19 12 * * *'
+    - cron: '10 16 * * *'
   workflow_dispatch: # Permite que você rode manualmente clicando em um botão no GitHub
 
 jobs:
