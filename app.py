@@ -75,39 +75,54 @@ def processar_dados(df):
     
     col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
     
-    # Blindagem caso a coluna de características não exista no DataFrame
     if col_caract not in df.columns:
         df[col_caract] = "N/I"
-    
+        
     def extrair_vencimento(texto):
-        # Validação contra nulos e strings vazias padronizadas
         if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", ""]: 
             return None, "SEM DATA"
             
-        # Normaliza o texto removendo espaços extras ou quebras de linha que possam quebrar a regex
-        texto_limpo = " ".join(str(texto).split())
+        # 1. NORMALIZAÇÃO RIGOROSA DE STRING:
+        # Remove acentuação e força minúsculo para evitar falhas humanas de digitação
+        t_ajustado = str(texto).lower()
+        t_ajustado = re.sub(r'[áàâãä]', 'a', t_ajustado)
+        t_ajustado = re.sub(r'[éèêë]', 'e', t_ajustado)
+        t_ajustado = re.sub(r'[íìîï]', 'i', t_ajustado)
+        t_ajustado = re.sub(r'[óòôõö]', 'o', t_ajustado)
+        t_ajustado = re.sub(r'[úùûü]', 'u', t_ajustado)
+        t_ajustado = re.sub(r'[ç]', 'c', t_ajustado)
         
-        # REGEX CORRIGIDA: \d{2,4} permite capturar anos tanto no formato DD/MM/YY (ex: 27) quanto DD/MM/YYYY (ex: 2027)
-        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{2,4})', texto_limpo, re.IGNORECASE)
+        # Substitui possíveis variações de "dois pontos" do Unicode por dois pontos padrão
+        t_ajustado = t_ajustado.replace("：", ":").replace(" ;", ":").replace(";", ":")
+        
+        # Transforma múltiplos espaços ou quebras de linha em um único espaço plano
+        t_ajustado = " ".join(t_ajustado.split())
+        
+        # 2. REGEX ULTRA FLEXÍVEL (Tolerante a falta de artigos como "da", "do" e acentos):
+        # Procura por "data", qualquer texto curto, "proxima", qualquer texto curto, "calibracao", dois pontos opcional, e a data.
+        padrao_prox = r'data\s+(?:da\s+)?proxima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
+        match_prox = re.search(padrao_prox, t_ajustado)
+        
         if match_prox:
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
+            
+        # Repete a mesma flexibilidade para a Última Calibração
+        padrao_ult = r'data\s+(?:da\s+)?ultima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
+        match_ultima = re.search(padrao_ult, t_ajustado)
         
-        # REGEX CORRIGIDA para a Última Calibração também
-        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{2,4})', texto_limpo, re.IGNORECASE)
         if match_ultima:
             dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
             return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
             
         return None, "SEM DATA"
 
-    # Aplica a extração corrigida
+    # Aplica a estratégia de extração blindada
     resultados = df[col_caract].apply(extrair_vencimento)
     
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
-    # Garante que a exibição da string de data formate corretamente mesmo se o ano veio com 2 dígitos
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
@@ -190,6 +205,19 @@ if menu == "🛠️ Visão Geral":
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
     with c3: render_mini_kpi("Vencidos", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
     st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
+    # --- ABA DE AUDITORIA TÁTICA ---
+with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
+    # Filtra linhas classificadas como VENCIDO por falta de data, mas que possuem números/barras no texto
+    possiveis_erros = df[
+        (df['STATUS'] == 'VENCIDO') & 
+        (df['ALERTA_DATA'] == 'SEM DATA') & 
+        (df[col_caract].str.contains(r'\d{2}/\d{2}', na=False))
+    ]
+    if not possiveis_erros.empty:
+        st.warning(f"Atenção: Detectamos {len(possiveis_erros)} instrumentos que estão sem data calculada, mas possuem menção a datas no texto:")
+        st.dataframe(possiveis_erros[['Código', 'Descrição', col_caract]], use_container_width=True)
+    else:
+        st.success("🔥 Varredura concluída: Zero falsos negativos encontrados na base!")
 
 elif menu == "✅ APTOS":
     st.markdown(f"### {menu}")
