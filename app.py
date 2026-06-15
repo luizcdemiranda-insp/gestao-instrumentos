@@ -9,8 +9,9 @@ import os
 from dateutil.relativedelta import relativedelta
 
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
-st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
+st.set_page_config(page_tit
 
+                   
 # --- INICIALIZAÇÃO DE MEMÓRIA ---
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠️ Visão Geral"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
@@ -216,17 +217,12 @@ if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
 if menu == "🛠️ Visão Geral":
     st.markdown("### 🛠️ Visão Geral de Metrologia")
     
-    # 1. Isolamento do grupo alvo
     df_vencidos = df[df['STATUS'] == 'VENCIDO']
-    
-    # 2. Criação da máscara de separação de famílias
     mask_icamento = df_vencidos[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)
     
-    # 3. Contagem blindada
     qtd_instrumentos = len(df_vencidos[~mask_icamento])
     qtd_icamento = len(df_vencidos[mask_icamento])
 
-    # 4. Novo Grid de 4 colunas para simetria visual
     c1, c2, c3, c4 = st.columns(4)
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
@@ -235,7 +231,6 @@ if menu == "🛠️ Visão Geral":
     
     st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
     
-    # --- ABA DE AUDITORIA TÁTICA ---
     with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
         possiveis_erros = df[
             (df['STATUS'] == 'VENCIDO') & 
@@ -250,8 +245,14 @@ if menu == "🛠️ Visão Geral":
 
 elif menu == "✅ APTOS":
     st.markdown(f"### {menu}")
-    fn, fc, fd = sistema_filtros(menu, True)
     df_f = df[df['STATUS'] == 'APTOS']
+    
+    # Injeção do KPI específico da página
+    c1, _, _ = st.columns(3)
+    with c1: render_mini_kpi("Total Aptos", len(df_f), "apto-kpi")
+    st.markdown("---")
+    
+    fn, fc, fd = sistema_filtros(menu, True)
     
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
@@ -270,8 +271,14 @@ elif menu == "✅ APTOS":
 
 elif menu == "⏳ Próximos de vencer":
     st.markdown(f"### {menu}")
-    fn, fc, fd = sistema_filtros(menu, True)
     df_f = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']
+    
+    # Injeção do KPI específico da página
+    c1, _, _ = st.columns(3)
+    with c1: render_mini_kpi("Total Próximos", len(df_f), "proximo-kpi")
+    st.markdown("---")
+    
+    fn, fc, fd = sistema_filtros(menu, True)
     
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
@@ -298,25 +305,30 @@ elif menu == "⏳ Próximos de vencer":
                 st.rerun()
 
 elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
-    # Mapeia qual sub-página está ativa no rádio secundário
     sub_ativa = st.session_state.get('sub_nc_radio', 'INSTRUMENTOS')
     st.markdown(f"### 🚨 NECESSÁRIO CALIBRAÇÃO › {sub_ativa}")
     
-    # Geração de chave isolada para filtros e botões não colidirem IDs
     suffix_nc = f"NC_{sub_ativa.replace(' ', '_')}"
-    fn, fc, fd = sistema_filtros(suffix_nc, True)
-    
-    # Filtra os dados base do status operacional
     df_f = df[df['STATUS'] == 'VENCIDO']
     
-    # SEPARAÇÃO DE SUB-PÁGINAS ATRAVÉS DA COLUNA 'FAMÍLIA DE PRODUTO'
     if sub_ativa == "INSTRUMENTOS":
-        # Estratégia excludente por inversão (~): Se não contiver IÇAMENTO, fica aqui
         df_f = df_f[~df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
     else:
-        # Contém o termo IÇAMENTO obrigatoriamente
         df_f = df_f[df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
         
+    # --- KPIs DE INTELIGÊNCIA DA SUB-PÁGINA ---
+    qtd_total = len(df_f)
+    qtd_sem_data = len(df_f[df_f['ALERTA_DATA'].isin(['SEM DATA', 'DATA ERRADA'])])
+    qtd_vencido_real = qtd_total - qtd_sem_data
+    
+    c1, c2, c3 = st.columns(3)
+    with c1: render_mini_kpi(f"Total na Lista", qtd_total, "vencido-kpi")
+    with c2: render_mini_kpi("Falta Cadastrar Data", qtd_sem_data, "vencido-kpi")
+    with c3: render_mini_kpi("Vencimento Ultrapassado", qtd_vencido_real, "vencido-kpi")
+    st.markdown("---")
+    
+    fn, fc, fd = sistema_filtros(suffix_nc, True)
+    
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
     
