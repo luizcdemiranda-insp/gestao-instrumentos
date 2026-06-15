@@ -75,31 +75,48 @@ def processar_dados(df):
     
     col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
     
+    # Blindagem caso a coluna de características não exista no DataFrame
+    if col_caract not in df.columns:
+        df[col_caract] = "N/I"
+    
     def extrair_vencimento(texto):
-        if pd.isna(texto): return None, "SEM DATA"
-        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        # Validação contra nulos e strings vazias padronizadas
+        if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", ""]: 
+            return None, "SEM DATA"
+            
+        # Normaliza o texto removendo espaços extras ou quebras de linha que possam quebrar a regex
+        texto_limpo = " ".join(str(texto).split())
+        
+        # REGEX CORRIGIDA: \d{2,4} permite capturar anos tanto no formato DD/MM/YY (ex: 27) quanto DD/MM/YYYY (ex: 2027)
+        match_prox = re.search(r'Data da Próxima Calibração:\s*(\d{2}/\d{2}/\d{2,4})', texto_limpo, re.IGNORECASE)
         if match_prox:
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
         
-        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{4})', str(texto))
+        # REGEX CORRIGIDA para a Última Calibração também
+        match_ultima = re.search(r'Data da Última Calibração:\s*(\d{2}/\d{2}/\d{2,4})', texto_limpo, re.IGNORECASE)
         if match_ultima:
             dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
             return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
+            
         return None, "SEM DATA"
 
+    # Aplica a extração corrigida
     resultados = df[col_caract].apply(extrair_vencimento)
     
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
     
+    # Garante que a exibição da string de data formate corretamente mesmo se o ano veio com 2 dígitos
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
     def classificar(row):
-        if row['ALERTA_DATA'] in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
-        if pd.isna(row['DATA_CALIBRACAO']): return "APTOS" 
-        dias = (row['DATA_CALIBRACAO'] - hoje).days
+        alerta = row.get('ALERTA_DATA', 'SEM DATA')
+        if alerta in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
+        if pd.isna(row.get('DATA_CALIBRACAO')): return "APTOS" 
+        
+        dias = (row.get('DATA_CALIBRACAO') - hoje).days
         return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
