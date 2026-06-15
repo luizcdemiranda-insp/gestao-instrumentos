@@ -215,10 +215,24 @@ if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
 # --- RENDERIZAÇÃO DAS PÁGINAS ---
 if menu == "🛠️ Visão Geral":
     st.markdown("### 🛠️ Visão Geral de Metrologia")
-    c1, c2, c3 = st.columns(3)
+    
+    # 1. Isolamento do grupo alvo
+    df_vencidos = df[df['STATUS'] == 'VENCIDO']
+    
+    # 2. Criação da máscara de separação de famílias
+    mask_icamento = df_vencidos[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)
+    
+    # 3. Contagem blindada
+    qtd_instrumentos = len(df_vencidos[~mask_icamento])
+    qtd_icamento = len(df_vencidos[mask_icamento])
+
+    # 4. Novo Grid de 4 colunas para simetria visual
+    c1, c2, c3, c4 = st.columns(4)
     with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
-    with c3: render_mini_kpi("Necessário Calibração", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
+    with c3: render_mini_kpi("Calib. Instrumentos", qtd_instrumentos, "vencido-kpi")
+    with c4: render_mini_kpi("Calib. Içamento", qtd_icamento, "vencido-kpi")
+    
     st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
     
     # --- ABA DE AUDITORIA TÁTICA ---
