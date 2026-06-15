@@ -46,7 +46,9 @@ st.markdown("""
     .kpi-container { padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); }
     .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
-    .card-instrumento { background-color: #112240; border-radius: 8px; padding: 10px; margin-bottom: 5px; border-left: 5px solid #ccc; opacity: 0.7; transition: all 0.3s ease; }
+    
+    /* GATILHO DE IMPRESSÃO SEGURO */
+    .card-instrumento { display: inline-block; width: 100%; background-color: #112240; border-radius: 8px; padding: 10px; margin-bottom: 5px; border-left: 5px solid #ccc; opacity: 0.7; transition: all 0.3s ease; box-sizing: border-box;}
     .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #2a1616, #112240); }
     .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2a2510, #112240); }
     .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #102416, #112240); opacity: 1; }
@@ -82,8 +84,6 @@ def processar_dados(df):
         if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", ""]: 
             return None, "SEM DATA"
             
-        # 1. NORMALIZAÇÃO RIGOROSA DE STRING:
-        # Remove acentuação e força minúsculo para evitar falhas humanas de digitação
         t_ajustado = str(texto).lower()
         t_ajustado = re.sub(r'[áàâãä]', 'a', t_ajustado)
         t_ajustado = re.sub(r'[éèêë]', 'e', t_ajustado)
@@ -92,14 +92,9 @@ def processar_dados(df):
         t_ajustado = re.sub(r'[úùûü]', 'u', t_ajustado)
         t_ajustado = re.sub(r'[ç]', 'c', t_ajustado)
         
-        # Substitui possíveis variações de "dois pontos" do Unicode por dois pontos padrão
         t_ajustado = t_ajustado.replace("：", ":").replace(" ;", ":").replace(";", ":")
-        
-        # Transforma múltiplos espaços ou quebras de linha em um único espaço plano
         t_ajustado = " ".join(t_ajustado.split())
         
-        # 2. REGEX ULTRA FLEXÍVEL (Tolerante a falta de artigos como "da", "do" e acentos):
-        # Procura por "data", qualquer texto curto, "proxima", qualquer texto curto, "calibracao", dois pontos opcional, e a data.
         padrao_prox = r'data\s+(?:da\s+)?proxima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_prox = re.search(padrao_prox, t_ajustado)
         
@@ -107,7 +102,6 @@ def processar_dados(df):
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
             
-        # Repete a mesma flexibilidade para a Última Calibração
         padrao_ult = r'data\s+(?:da\s+)?ultima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_ultima = re.search(padrao_ult, t_ajustado)
         
@@ -117,7 +111,6 @@ def processar_dados(df):
             
         return None, "SEM DATA"
 
-    # Aplica a estratégia de extração blindada
     resultados = df[col_caract].apply(extrair_vencimento)
     
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
@@ -141,14 +134,25 @@ def processar_dados(df):
 def enviar_email_consolidado(destinatarios, df_criticos):
     msg = EmailMessage()
     msg['Subject'] = f"🚨 ALERTA: {len(df_criticos)} Instrumentos Selecionados"
-    msg['From'] = st.secrets["email"]["email_usuario"]
+    
+    # Blindagem
+    email_config = st.secrets.get("email", {})
+    email_usuario = email_config.get("email_usuario", "nao_configurado@sistema.com")
+    email_senha = email_config.get("email_senha", "")
+    
+    msg['From'] = email_usuario
     msg['To'] = destinatarios
     conteudo = "Relatório de Instrumentos Selecionados para Alerta:\n\n"
+    
     for _, row in df_criticos.iterrows():
-        conteudo += f"- {row['Descrição']} (TAG: {row['Código']}) - Vencimento: {row['DATA_STR']}\n"
+        desc = row.get('Descrição', 'N/I')
+        cod = row.get('Código', 'N/I')
+        data_str = row.get('DATA_STR', 'N/I')
+        conteudo += f"- {desc} (TAG: {cod}) - Vencimento: {data_str}\n"
+        
     msg.set_content(conteudo)
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(st.secrets["email"]["email_usuario"], st.secrets["email"]["email_senha"])
+        smtp.login(email_usuario, email_senha)
         smtp.send_message(msg)
 
 def render_mini_kpi(label, valor, classe):
@@ -179,13 +183,14 @@ def popup_confirmar_envio(x, y, df_alvo):
 # --- NAVEGAÇÃO LATERAL ---
 df = processar_dados(carregar_dados())
 
+# Definição Global da Coluna de Características para a Auditoria
+col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
+
 st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# Botão Principal Único (Metrologia)
 st.sidebar.button("📏 METROLOGIA", use_container_width=True, type="primary")
 
-# Sub-menu de Metrologia (Sempre visível agora)
 paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 VENCIDOS", "⚙️ Ajustes"]
 idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
 escolha = st.sidebar.radio("SubMetro", paginas_metro, index=idx, label_visibility="collapsed")
@@ -205,33 +210,36 @@ if menu == "🛠️ Visão Geral":
     with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
     with c3: render_mini_kpi("Vencidos", len(df[df['STATUS'] == 'VENCIDO']), "vencido-kpi")
     st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
-    # --- ABA DE AUDITORIA TÁTICA ---
-with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
-    # Filtra linhas classificadas como VENCIDO por falta de data, mas que possuem números/barras no texto
-    possiveis_erros = df[
-        (df['STATUS'] == 'VENCIDO') & 
-        (df['ALERTA_DATA'] == 'SEM DATA') & 
-        (df[col_caract].str.contains(r'\d{2}/\d{2}', na=False))
-    ]
-    if not possiveis_erros.empty:
-        st.warning(f"Atenção: Detectamos {len(possiveis_erros)} instrumentos que estão sem data calculada, mas possuem menção a datas no texto:")
-        st.dataframe(possiveis_erros[['Código', 'Descrição', col_caract]], use_container_width=True)
-    else:
-        st.success("🔥 Varredura concluída: Zero falsos negativos encontrados na base!")
+    
+    # --- ABA DE AUDITORIA TÁTICA (Corrigida a indentação e escopo) ---
+    with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
+        possiveis_erros = df[
+            (df['STATUS'] == 'VENCIDO') & 
+            (df['ALERTA_DATA'] == 'SEM DATA') & 
+            (df[col_caract].astype(str).str.contains(r'\d{2}/\d{2}', na=False))
+        ]
+        if not possiveis_erros.empty:
+            st.warning(f"Atenção: Detectamos {len(possiveis_erros)} instrumentos que estão sem data calculada, mas possuem menção a datas no texto:")
+            st.dataframe(possiveis_erros[['Código', 'Descrição', col_caract]], use_container_width=True)
+        else:
+            st.success("🔥 Varredura concluída: Zero falsos negativos encontrados na base!")
 
 elif menu == "✅ APTOS":
     st.markdown(f"### {menu}")
     fn, fc, fd = sistema_filtros(menu, True)
     df_f = df[df['STATUS'] == 'APTOS']
     
-    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
-    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
-    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
+    if fn: df_f = df_f[df_f.get('Descrição', '').str.contains(fn, case=False, na=False)]
+    if fc: df_f = df_f[df_f.get('Código', '').str.contains(fc, case=False, na=False)]
+    if fd: df_f = df_f[df_f.get('DATA_STR', '').str.contains(fd, case=False, na=False)]
     
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            st.markdown(f"<div class='card-instrumento apto-card'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><span style='font-size:11px;'>📅 {row['DATA_STR']}</span></div>", unsafe_allow_html=True)
+            desc = str(row.get('Descrição', 'N/I'))[:25]
+            cod = str(row.get('Código', 'N/I'))
+            data_str = str(row.get('DATA_STR', 'N/I'))
+            st.markdown(f"<div class='card-instrumento apto-card'><b>{desc}</b><br><small>{cod}</small><br><span style='font-size:11px;'>📅 {data_str}</span></div>", unsafe_allow_html=True)
 
 elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
     status_alvo = "PRÓXIMO VENCIMENTO" if menu == "⏳ Próximos de vencer" else "VENCIDO"
@@ -239,9 +247,9 @@ elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
     fn, fc, fd = sistema_filtros(menu, True)
     df_f = df[df['STATUS'] == status_alvo]
     
-    if fn: df_f = df_f[df_f['Descrição'].str.contains(fn, case=False, na=False)]
-    if fc: df_f = df_f[df_f['Código'].str.contains(fc, case=False, na=False)]
-    if fd: df_f = df_f[df_f['DATA_STR'].str.contains(fd, case=False, na=False)]
+    if fn: df_f = df_f[df_f.get('Descrição', '').str.contains(fn, case=False, na=False)]
+    if fc: df_f = df_f[df_f.get('Código', '').str.contains(fc, case=False, na=False)]
+    if fd: df_f = df_f[df_f.get('DATA_STR', '').str.contains(fd, case=False, na=False)]
 
     if menu == "🚨 VENCIDOS":
         if st.button("🚨 Alerta em Lote", key="btn_alerta_lote", use_container_width=True):
@@ -257,11 +265,15 @@ elif menu in ["⏳ Próximos de vencer", "🚨 VENCIDOS"]:
             is_sel = idx in st.session_state.selecionados
             c_class = f"{'vencido-card' if menu=='🚨 VENCIDOS' else 'proximo-card'} {'card-selecionado' if is_sel else ''}"
             
-            if row['DATA_STR'] == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
-            elif row['DATA_STR'] == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
-            else: data_exibicao = f"📅 {row['DATA_STR']}"
+            desc = str(row.get('Descrição', 'N/I'))[:25]
+            cod = str(row.get('Código', 'N/I'))
+            data_str = str(row.get('DATA_STR', 'N/I'))
+            
+            if data_str == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
+            elif data_str == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
+            else: data_exibicao = f"📅 {data_str}"
 
-            st.markdown(f"<div class='card-instrumento {c_class}'><b>{row['Descrição'][:25]}</b><br><small>{row['Código']}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card-instrumento {c_class}'><b>{desc}</b><br><small>{cod}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
             if st.button("✅" if is_sel else "⭕", key=f"s_{idx}"):
                 if is_sel: st.session_state.selecionados.remove(idx)
                 else: st.session_state.selecionados.append(idx)
