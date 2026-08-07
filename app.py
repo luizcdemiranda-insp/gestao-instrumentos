@@ -81,7 +81,7 @@ def processar_dados(df):
         df[col_caract] = "N/I"
         
     def extrair_vencimento(texto):
-        if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", ""]: 
+        if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", "NONE", ""]: 
             return None, "SEM DATA"
             
         t_ajustado = str(texto).lower()
@@ -95,18 +95,25 @@ def processar_dados(df):
         t_ajustado = t_ajustado.replace("：", ":").replace(" ;", ":").replace(";", ":")
         t_ajustado = " ".join(t_ajustado.split())
         
+        # 1. NOVA REGRA: BLINDAGEM DE DISPENSA (Aceita "dispensa" e "despensa", com ou sem "de")
+        padrao_dispensa = r'd[ei]spensa\s+(?:de\s+)?calibracao'
+        if re.search(padrao_dispensa, t_ajustado):
+            return None, "DISPENSADO"
+        
+        # 2. VERIFICAÇÃO DE PRÓXIMA CALIBRAÇÃO
         padrao_prox = r'data\s+(?:da\s+)?proxima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_prox = re.search(padrao_prox, t_ajustado)
         
         if match_prox:
-            dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
+            dt = pd.to_datetime(match_prox.group(1), format='mixed', errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
             
+        # 3. VERIFICAÇÃO DE ÚLTIMA CALIBRAÇÃO
         padrao_ult = r'data\s+(?:da\s+)?ultima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_ultima = re.search(padrao_ult, t_ajustado)
         
         if match_ultima:
-            dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
+            dt_ult = pd.to_datetime(match_ultima.group(1), format='mixed', errors='coerce')
             return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
             
         return None, "SEM DATA"
@@ -121,6 +128,10 @@ def processar_dados(df):
     
     def classificar(row):
         alerta = row.get('ALERTA_DATA', 'SEM DATA')
+        
+        # APLICAÇÃO DA NOVA REGRA: Se foi flagrado como dispensado, é APTO direto.
+        if alerta == "DISPENSADO": return "APTOS"
+        
         if alerta in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
         if pd.isna(row.get('DATA_CALIBRACAO')): return "APTOS" 
         
