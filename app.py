@@ -95,7 +95,7 @@ def processar_dados(df):
         t_ajustado = t_ajustado.replace("：", ":").replace(" ;", ":").replace(";", ":")
         t_ajustado = " ".join(t_ajustado.split())
         
-        # 1. NOVA REGRA: BLINDAGEM DE DISPENSA (Aceita "dispensa" e "despensa", com ou sem "de")
+        # 1. BLINDAGEM DE DISPENSA
         padrao_dispensa = r'd[ei]spensa\s+(?:de\s+)?calibracao'
         if re.search(padrao_dispensa, t_ajustado):
             return None, "DISPENSADO"
@@ -105,7 +105,8 @@ def processar_dados(df):
         match_prox = re.search(padrao_prox, t_ajustado)
         
         if match_prox:
-            dt = pd.to_datetime(match_prox.group(1), format='mixed', errors='coerce')
+            # CORREÇÃO: Forçando o padrão Brasileiro (Dia/Mês/Ano) com dayfirst=True
+            dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
             
         # 3. VERIFICAÇÃO DE ÚLTIMA CALIBRAÇÃO
@@ -113,7 +114,8 @@ def processar_dados(df):
         match_ultima = re.search(padrao_ult, t_ajustado)
         
         if match_ultima:
-            dt_ult = pd.to_datetime(match_ultima.group(1), format='mixed', errors='coerce')
+            # CORREÇÃO: Forçando o padrão Brasileiro (Dia/Mês/Ano) com dayfirst=True
+            dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
             return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
             
         return None, "SEM DATA"
@@ -129,7 +131,6 @@ def processar_dados(df):
     def classificar(row):
         alerta = row.get('ALERTA_DATA', 'SEM DATA')
         
-        # APLICAÇÃO DA NOVA REGRA: Se foi flagrado como dispensado, é APTO direto.
         if alerta == "DISPENSADO": return "APTOS"
         
         if alerta in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
