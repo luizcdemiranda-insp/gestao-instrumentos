@@ -28,48 +28,81 @@ def salvar_config(emails):
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "📊 VISÃO GERAL"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = carregar_emails()
 
-# --- MOTOR CSS ATUALIZADO (PADRÃO MERCÚRIO) ---
+# --- MOTOR CSS GLOBAL E SIDEBAR (PADRÃO MERCÚRIO FORÇADO) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0a192f; color: #e0e0e0; }
-    section[data-testid="stSidebar"] { background-color: #151515; border-right: 1px solid #2a2a2a; } /* Fundo mais escuro no menu */
     
-    /* BOTÕES LATERAIS (ESTILO AÇÕES INFERIORES) */
-    section[data-testid="stSidebar"] div.stButton > button {
-        background-color: transparent; border: 1px solid rgba(255,255,255,0.2); padding: 10px 20px;
-        border-radius: 8px; font-weight: 600; transition: all 0.3s ease;
-        justify-content: center; text-align: center; color: #b0b4c4; width: 100%;
+    /* SIDEBAR CONTAINER */
+    section[data-testid="stSidebar"] { background-color: #121212; border-right: 1px solid #222222; } 
+    
+    /* FORÇAR ESTILO DOS BOTÕES DA SIDEBAR */
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: #1e1e1e !important; 
+        border: 1px solid #333333 !important; 
+        padding: 10px 15px !important;
+        border-radius: 8px !important; 
+        font-weight: 600 !important; 
+        color: #b0b4c4 !important; 
+        width: 100% !important;
+        transition: all 0.2s ease !important;
     }
-    section[data-testid="stSidebar"] div.stButton > button:hover { 
-        border-color: #ffffff; color: white; background-color: rgba(255,255,255,0.05);
+    section[data-testid="stSidebar"] .stButton > button:hover { 
+        border-color: #ff4b4b !important; 
+        color: white !important; 
+        background-color: #252525 !important;
     }
     
-    /* BOTÃO PRIMÁRIO DE ALERTA (DESTAQUE) */
-    section[data-testid="stSidebar"] div.stButton > button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #e67e22, #d35400) !important; color: white !important; border: none !important;
-        box-shadow: 0 4px 15px rgba(230, 126, 34, 0.4) !important; letter-spacing: 1px; text-transform: uppercase; font-weight: 800;
+    /* BOTÃO PRIMÁRIO (DISPARAR ALERTA) */
+    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
+        background: linear-gradient(135deg, #ff4b4b, #e63939) !important; 
+        color: white !important; 
+        border: none !important;
+        box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4) !important; 
+        letter-spacing: 1px !important; 
+        text-transform: uppercase !important; 
+        font-weight: 800 !important;
     }
-    section[data-testid="stSidebar"] div.stButton > button[data-testid="baseButton-primary"]:hover {
-        transform: translateY(-2px); box-shadow: 0 6px 20px rgba(230, 126, 34, 0.6) !important;
+    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"]:hover {
+        transform: translateY(-2px); 
+        box-shadow: 0 6px 20px rgba(255, 75, 75, 0.6) !important;
     }
 
-    /* MENU DE SELEÇÃO LATERAL (ESTILO MERCÚRIO BLOCO SÓLIDO) */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child { display: none; }
+    /* ESTILIZAÇÃO DO RADIO GROUP NA SIDEBAR (MENU ESTILO MERCÚRIO) */
+    section[data-testid="stSidebar"] div[role="radiogroup"] {
+        gap: 6px !important;
+    }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        background-color: transparent; border: none; padding: 12px 15px;
-        margin-bottom: 8px; font-weight: 700; font-size: 14px; transition: all 0.2s ease-in-out; 
-        display: flex; align-items: center; width: 100%; color: #a0aabf; 
-        border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;
+        background-color: transparent !important; 
+        border: none !important; 
+        padding: 12px 15px !important;
+        margin-bottom: 0px !important; 
+        font-weight: 700 !important; 
+        font-size: 13px !important; 
+        display: flex !important; 
+        align-items: center !important; 
+        width: 100% !important; 
+        color: #9099b2 !important; 
+        border-radius: 8px !important; 
+        cursor: pointer !important; 
+        letter-spacing: 0.5px !important;
+        transition: background 0.2s ease, color 0.2s ease !important;
     }
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover { 
-        color: white; background-color: rgba(255,255,255,0.08); 
+        color: white !important; 
+        background-color: rgba(255, 255, 255, 0.05) !important; 
     }
+    /* Ocultar o círculo nativo do rádio */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label div[data-testid="stMarkdownContainer"] p {
+        font-size: 13px !important;
+        font-weight: 700 !important;
+    }
+    
+    /* ITEM SELECIONADO NO RADIO (BLOCO SÓLIDO VERMELHO MERCÚRIO) */
     section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
-        color: #ffffff; background: linear-gradient(135deg, #ff4b4b, #ff7676); 
-        font-weight: 800; box-shadow: 0 4px 10px rgba(255, 75, 75, 0.3);
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked):hover {
-        background: linear-gradient(135deg, #ff4b4b, #ff7676); 
+        color: #ffffff !important; 
+        background: linear-gradient(135deg, #ff4b4b, #ff6b6b) !important; 
+        box-shadow: 0 4px 12px rgba(255, 75, 75, 0.35) !important;
     }
 
     /* GLASSMORPHISM NOS KPIS */
@@ -232,21 +265,21 @@ def renderizar_logo_sidebar():
         with open(caminho_imagem, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
         html_logo = f"""
-        <div style="display: flex; align-items: center; margin-bottom: 30px; margin-top: -15px;">
+        <div style="display: flex; align-items: center; margin-bottom: 25px; margin-top: -10px;">
             <img src="data:image/png;base64,{encoded_string}" style="width: 35px; margin-right: 12px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
             <h2 style="color: #ffffff; margin: 0; font-weight: 900; letter-spacing: 1px; font-size: 20px;">TEMPERMAR</h2>
         </div>
         """
         st.sidebar.markdown(html_logo, unsafe_allow_html=True)
     except:
-        st.sidebar.markdown("<h2 style='color: white; font-weight: 900; margin-bottom: 25px;'>TEMPERMAR</h2>", unsafe_allow_html=True)
+        st.sidebar.markdown("<h2 style='color: white; font-weight: 900; margin-bottom: 20px;'>TEMPERMAR</h2>", unsafe_allow_html=True)
 
 renderizar_logo_sidebar()
 
 # IDENTIDADE E CABEÇALHO DO MENU
-st.sidebar.markdown("<h4 style='color: white; font-weight: 700; margin-bottom: 25px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
-st.sidebar.markdown("<div style='display: flex; align-items: center; color: white; font-size: 16px; font-weight: 600; letter-spacing: 1px;'><span style='font-size: 20px; margin-right: 10px;'>🖥️</span> NAVEGAÇÃO</div>", unsafe_allow_html=True)
-st.sidebar.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 10px; margin-bottom: 15px;'>", unsafe_allow_html=True)
+st.sidebar.markdown("<h4 style='color: white; font-weight: 700; margin-bottom: 20px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='display: flex; align-items: center; color: white; font-size: 15px; font-weight: 600; letter-spacing: 1px;'><span style='font-size: 18px; margin-right: 8px;'>🖥️</span> NAVEGAÇÃO</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 8px; margin-bottom: 12px;'>", unsafe_allow_html=True)
 
 paginas_metro = ["📊 VISÃO GERAL", "✅ EQUIPAMENTOS APTOS", "⏳ PRÓXIMOS DO VENCIMENTO", "🚨 NECESSÁRIO CALIBRAÇÃO", "⚙️ CONFIGURAÇÕES"]
 idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
@@ -260,15 +293,15 @@ menu = st.session_state.pagina_ativa
 
 # SUB-MENU CONDICIONAL
 if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
-    st.sidebar.markdown("<div style='padding-left: 15px; font-size: 11px; color: #ff4b4b; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Categoria:</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='padding-left: 5px; font-size: 11px; color: #ff4b4b; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Categoria:</div>", unsafe_allow_html=True)
     sub_nc = st.sidebar.radio("SubNC", ["INSTRUMENTOS", "EQUIPAMENTOS DE IÇAMENTO"], key="sub_nc_radio", label_visibility="collapsed")
 
 # ESPAÇAMENTO E BOTÕES DO RODAPÉ
-st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True)
+st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
 
 if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
     disparar = st.sidebar.button("🚨 Disparar Alerta", use_container_width=True, type="primary")
-    st.sidebar.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
 if st.sidebar.button("🔄 Atualizar Planilha", use_container_width=True):
     st.cache_data.clear()
