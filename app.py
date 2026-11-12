@@ -1,22 +1,3 @@
-Excelente escolha! O sistema vai dar um salto de qualidade absurdo com essas atualizações. Esse conjunto de técnicas de interface transforma o seu projeto de uma "ferramenta interna" para uma verdadeira plataforma com padrão executivo.
-
-### 🛠️ O que foi implementado neste pacote:
-
-1. **Sidebar Logo & Título (Partes 1 e 2):** Criei a função para ler a imagem e injetar via HTML, garantindo que o logo e a tipografia fiquem perfeitamente alinhados na barra lateral. O Grande Título Global também foi adicionado para marcar presença no topo de todas as abas.
-2. **Glassmorphism nos KPIs (Vidro Fumê):** Os painéis numéricos agora possuem transparência, desfoque de fundo e bordas suaves, dando uma sensação de profundidade e modernidade.
-3. **Grid Perfeito e Hover nos Cards:** Todos os cards agora são flexíveis (`display: flex`) e travados com uma altura mínima (`min-height: 140px`). Isso resolve o problema de cards tortos. Adicionei também a animação de levitação (Hover) ao passar o mouse e a divisória visual suave entre o nome do equipamento e a data.
-4. **Tratamento Visual para Dispensa:** Criei um design específico e um badge azul elegante para quando o equipamento exibir o status "♾️ DISPENSA DE CALIBRAÇÃO".
-
-> **⚠️ Passo importante antes de rodar:**
-> Recorte aquele ícone laranja do seu logo original e salve-o com o nome exato de **`icone.png`** dentro da mesma pasta onde está o seu script Python. O sistema vai puxar essa imagem de lá automaticamente.
-
----
-
-### 🚀 Código Completo Atualizado (Master Script)
-
-Copie o código abaixo e **substitua o seu script inteiro**. Ele já contém **TODAS** as correções de Regex, a trava de coluna "Características", o conserto das datas americanas e o botão de limpeza de cache que validamos anteriormente.
-
-```python
 import streamlit as st
 import pandas as pd
 import re
@@ -481,5 +462,3 @@ elif menu == "⚙️ Ajustes":
         st.session_state.config_emails = novos
         salvar_config(novos)
         st.success("Configuração salva com sucesso!")
-
-```
