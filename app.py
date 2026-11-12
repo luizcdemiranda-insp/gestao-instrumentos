@@ -203,6 +203,15 @@ if col_familia not in df.columns:
     df[col_familia] = "INSTRUMENTOS"
 
 st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# NOVO BOTÃO DE ATUALIZAÇÃO FORÇADA
+# ---------------------------------------------------------
+if st.sidebar.button("🔄 Atualizar Planilha", use_container_width=True):
+    st.cache_data.clear() # Limpa a memória instantaneamente
+    st.rerun()            # Recarrega a tela com os novos dados
+# ---------------------------------------------------------
+
 st.sidebar.markdown("---")
 
 st.sidebar.button("📏 METROLOGIA", use_container_width=True, type="primary")
