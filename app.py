@@ -1,3 +1,22 @@
+Excelente escolha! O sistema vai dar um salto de qualidade absurdo com essas atualizações. Esse conjunto de técnicas de interface transforma o seu projeto de uma "ferramenta interna" para uma verdadeira plataforma com padrão executivo.
+
+### 🛠️ O que foi implementado neste pacote:
+
+1. **Sidebar Logo & Título (Partes 1 e 2):** Criei a função para ler a imagem e injetar via HTML, garantindo que o logo e a tipografia fiquem perfeitamente alinhados na barra lateral. O Grande Título Global também foi adicionado para marcar presença no topo de todas as abas.
+2. **Glassmorphism nos KPIs (Vidro Fumê):** Os painéis numéricos agora possuem transparência, desfoque de fundo e bordas suaves, dando uma sensação de profundidade e modernidade.
+3. **Grid Perfeito e Hover nos Cards:** Todos os cards agora são flexíveis (`display: flex`) e travados com uma altura mínima (`min-height: 140px`). Isso resolve o problema de cards tortos. Adicionei também a animação de levitação (Hover) ao passar o mouse e a divisória visual suave entre o nome do equipamento e a data.
+4. **Tratamento Visual para Dispensa:** Criei um design específico e um badge azul elegante para quando o equipamento exibir o status "♾️ DISPENSA DE CALIBRAÇÃO".
+
+> **⚠️ Passo importante antes de rodar:**
+> Recorte aquele ícone laranja do seu logo original e salve-o com o nome exato de **`icone.png`** dentro da mesma pasta onde está o seu script Python. O sistema vai puxar essa imagem de lá automaticamente.
+
+---
+
+### 🚀 Código Completo Atualizado (Master Script)
+
+Copie o código abaixo e **substitua o seu script inteiro**. Ele já contém **TODAS** as correções de Regex, a trava de coluna "Características", o conserto das datas americanas e o botão de limpeza de cache que validamos anteriormente.
+
+```python
 import streamlit as st
 import pandas as pd
 import re
@@ -7,6 +26,7 @@ from email.message import EmailMessage
 import json
 import os
 from dateutil.relativedelta import relativedelta
+import base64
 
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
@@ -16,6 +36,7 @@ if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "🛠
 if 'config_emails' not in st.session_state: st.session_state.config_emails = "luizclaudio@tempermar.com.br"
 if 'selecionados' not in st.session_state: st.session_state.selecionados = []
 
+# --- MOTOR CSS ATUALIZADO (UI/UX PREMIUM) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0a192f; color: #e0e0e0; }
@@ -43,41 +64,69 @@ st.markdown("""
         color: #ff9800; border-left: 4px solid #ff9800; background-color: rgba(255, 152, 0, 0.05); font-weight: bold;
     }
 
-    .kpi-container { padding: 12px; border-radius: 10px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.05); }
-    .kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 5px 0; }
-    .kpi-label { font-size: 12px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
+    /* GLASSMORPHISM NOS KPIS */
+    .kpi-container { 
+        padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 15px; 
+        border: 1px solid rgba(255,255,255,0.08); 
+        background: rgba(17, 34, 64, 0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2); transition: transform 0.3s ease;
+    }
+    .kpi-container:hover { transform: translateY(-3px); }
+    .kpi-value { font-size: 28px; font-weight: 900; line-height: 1.1; margin: 5px 0; }
+    .kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
     
-    /* GATILHO DE IMPRESSÃO SEGURO */
-    .card-instrumento { display: inline-block; width: 100%; background-color: #112240; border-radius: 8px; padding: 10px; margin-bottom: 5px; border-left: 5px solid #ccc; opacity: 0.7; transition: all 0.3s ease; box-sizing: border-box;}
-    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #2a1616, #112240); }
-    .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2a2510, #112240); }
-    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #102416, #112240); opacity: 1; }
-    .card-selecionado { border: 2px solid #ff9800 !important; box-shadow: 0 0 15px rgba(255, 152, 0, 0.6) !important; transform: scale(1.02); opacity: 1 !important; background: linear-gradient(to right, #332100, #112240) !important; }
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
     .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
     .apto-kpi { color: #2ecc71; border-bottom: 3px solid #2ecc71; }
+
+    /* CARDS EM GRID PERFEITO E EFEITO HOVER */
+    .card-instrumento { 
+        display: flex; flex-direction: column; justify-content: space-between; min-height: 150px;
+        width: 100%; background-color: #112240; border-radius: 10px; 
+        padding: 22px 15px 15px 15px; margin-bottom: 15px; margin-top: 5px; 
+        border-left: 5px solid #ccc; transition: all 0.3s ease; box-sizing: border-box;
+        position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .card-instrumento:hover { transform: translateY(-5px); box-shadow: 0 12px 25px rgba(0,0,0,0.4); }
+    
+    .badge-status {
+        position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+        padding: 3px 10px; border-radius: 4px; border: 1px dashed; font-size: 10px; 
+        font-weight: 800; letter-spacing: 0.5px; background-color: #0a192f; text-transform: uppercase;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    }
+    .badge-vencido { color: #ff4b4b; border-color: #ff4b4b; }
+    .badge-proximo { color: #F1C40F; border-color: #F1C40F; }
+    .badge-apto { color: #2ecc71; border-color: #2ecc71; }
+    .badge-alerta { color: #8E44AD; border-color: #8E44AD; }
+    .badge-dispensa { color: #3498DB; border-color: #3498DB; } /* Azul para dispensa */
+
+    .vencido-card { border-left-color: #ff4b4b; background: linear-gradient(to right, #2a1616, #112240); }
+    .proximo-card { border-left-color: #fcc419; background: linear-gradient(to right, #2a2510, #112240); }
+    .apto-card { border-left-color: #2ecc71; background: linear-gradient(to right, #102416, #112240); }
+    .card-selecionado { border: 2px solid #ff9800 !important; box-shadow: 0 0 20px rgba(255, 152, 0, 0.4) !important; transform: scale(1.02); background: linear-gradient(to right, #332100, #112240) !important; }
     </style>
 """, unsafe_allow_html=True)
 
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
-# --- CARREGAMENTO RÁPIDO VIA PLANILHA ---
+# --- CARREGAMENTO DE DADOS ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQTJGqK9uyb4mOwVMnRPdK1ugpXQHeYaEXeXnjYCx6_QfFNmkQ0i7Y5uMC-8QSeMPKMs_9IlywVqayM/pub?output=csv"
 
 @st.cache_data(ttl=600)
 def carregar_dados():
-    try: 
-        return pd.read_csv(SHEET_URL)
-    except: 
-        return pd.DataFrame()
+    try: return pd.read_csv(SHEET_URL)
+    except: return pd.DataFrame()
 
 def processar_dados(df):
     if df.empty: return df
     
-    col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
+    # 1. TRAVA EXPLÍCITA DA COLUNA (Resolve o problema do Omie)
+    col_caract = "Características" 
     
     if col_caract not in df.columns:
+        st.error(f"🚨 ERRO DE LEITURA: A coluna '{col_caract}' não foi encontrada! Verifique o cabeçalho no Sheets.")
         df[col_caract] = "N/I"
         
     def extrair_vencimento(texto):
@@ -91,48 +140,41 @@ def processar_dados(df):
         t_ajustado = re.sub(r'[óòôõö]', 'o', t_ajustado)
         t_ajustado = re.sub(r'[úùûü]', 'u', t_ajustado)
         t_ajustado = re.sub(r'[ç]', 'c', t_ajustado)
-        
         t_ajustado = t_ajustado.replace("：", ":").replace(" ;", ":").replace(";", ":")
         t_ajustado = " ".join(t_ajustado.split())
         
-        # 1. BLINDAGEM DE DISPENSA
+        # BLINDAGEM DE DISPENSA
         padrao_dispensa = r'd[ei]spensa\s+(?:de\s+)?calibracao'
         if re.search(padrao_dispensa, t_ajustado):
             return None, "DISPENSADO"
         
-        # 2. VERIFICAÇÃO DE PRÓXIMA CALIBRAÇÃO
+        # VERIFICAÇÃO DE PRÓXIMA CALIBRAÇÃO (dayfirst=True)
         padrao_prox = r'data\s+(?:da\s+)?proxima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_prox = re.search(padrao_prox, t_ajustado)
         
         if match_prox:
-            # CORREÇÃO: Forçando o padrão Brasileiro (Dia/Mês/Ano) com dayfirst=True
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
             return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
             
-        # 3. VERIFICAÇÃO DE ÚLTIMA CALIBRAÇÃO
+        # VERIFICAÇÃO DE ÚLTIMA CALIBRAÇÃO (dayfirst=True)
         padrao_ult = r'data\s+(?:da\s+)?ultima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_ultima = re.search(padrao_ult, t_ajustado)
         
         if match_ultima:
-            # CORREÇÃO: Forçando o padrão Brasileiro (Dia/Mês/Ano) com dayfirst=True
             dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
             return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
             
         return None, "SEM DATA"
 
     resultados = df[col_caract].apply(extrair_vencimento)
-    
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
-    
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
     def classificar(row):
         alerta = row.get('ALERTA_DATA', 'SEM DATA')
-        
         if alerta == "DISPENSADO": return "APTOS"
-        
         if alerta in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
         if pd.isna(row.get('DATA_CALIBRACAO')): return "APTOS" 
         
@@ -140,13 +182,11 @@ def processar_dados(df):
         return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
-    
     return df
 
 def enviar_email_consolidado(destinatarios, df_criticos):
     msg = EmailMessage()
     msg['Subject'] = f"🚨 ALERTA: {len(df_criticos)} Itens Selecionados"
-    
     email_config = st.secrets.get("email", {})
     email_usuario = email_config.get("email_usuario", "nao_configurado@sistema.com")
     email_senha = email_config.get("email_senha", "")
@@ -167,7 +207,7 @@ def enviar_email_consolidado(destinatarios, df_criticos):
         smtp.send_message(msg)
 
 def render_mini_kpi(label, valor, classe):
-    st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-label">{label}</div><div class="kpi-value">{valor}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-value">{valor}</div><div class="kpi-label">{label}</div></div>', unsafe_allow_html=True)
 
 def sistema_filtros(key_sufix, mostrar_botao_limpar=False):
     col_titulo, col_botao = st.columns([4, 1])
@@ -194,29 +234,35 @@ def popup_confirmar_envio(x, y, df_alvo):
 # --- NAVEGAÇÃO LATERAL ---
 df = processar_dados(carregar_dados())
 
-# Mapeamento dinâmico de colunas do Google Sheets
-col_caract = next((c for c in df.columns if 'CARACTER' in c.upper()), "Características")
 col_familia = next((c for c in df.columns if 'FAMÍLIA' in c.upper() or 'FAMILIA' in c.upper()), "FAMÍLIA DE PRODUTO")
+if col_familia not in df.columns: df[col_familia] = "INSTRUMENTOS"
 
-# Injeção de segurança caso a coluna de família não exista nas linhas
-if col_familia not in df.columns:
-    df[col_familia] = "INSTRUMENTOS"
+# RENDERIZAÇÃO DO LOGO COM TEXTO BRANCO NA SIDEBAR
+def renderizar_logo_sidebar():
+    caminho_imagem = "icone.png"
+    try:
+        with open(caminho_imagem, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+        html_logo = f"""
+        <div style="display: flex; align-items: center; margin-bottom: 25px; margin-top: -15px;">
+            <img src="data:image/png;base64,{encoded_string}" style="width: 40px; margin-right: 15px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
+            <h2 style="color: #ffffff; margin: 0; font-weight: 900; letter-spacing: 1px; font-size: 22px;">TEMPERMAR</h2>
+        </div>
+        """
+        st.sidebar.markdown(html_logo, unsafe_allow_html=True)
+    except:
+        st.sidebar.markdown("<h2 style='color: white; font-weight: 900; margin-bottom: 20px;'>TEMPERMAR</h2>", unsafe_allow_html=True)
 
-st.sidebar.markdown("<h3 style='color: white;'>MONITORAMENTO TEMPERMAR</h3>", unsafe_allow_html=True)
+renderizar_logo_sidebar()
 
-# ---------------------------------------------------------
-# NOVO BOTÃO DE ATUALIZAÇÃO FORÇADA
-# ---------------------------------------------------------
+# BOTÃO DE ATUALIZAÇÃO FORÇADA
 if st.sidebar.button("🔄 Atualizar Planilha", use_container_width=True):
-    st.cache_data.clear() # Limpa a memória instantaneamente
-    st.rerun()            # Recarrega a tela com os novos dados
-# ---------------------------------------------------------
+    st.cache_data.clear()
+    st.rerun()
 
 st.sidebar.markdown("---")
-
 st.sidebar.button("📏 METROLOGIA", use_container_width=True, type="primary")
 
-# Menu de Páginas Principais (Renomeado com o novo conceito operacional)
 paginas_metro = ["🛠️ Visão Geral", "✅ APTOS", "⏳ Próximos de vencer", "🚨 NECESSÁRIO CALIBRAÇÃO", "⚙️ Ajustes"]
 idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
 escolha = st.sidebar.radio("SubMetro", paginas_metro, index=idx, label_visibility="collapsed")
@@ -228,52 +274,53 @@ if escolha != st.session_state.pagina_ativa:
 st.sidebar.markdown("---")
 menu = st.session_state.pagina_ativa
 
-# SUB-PÁGINAS DINÂMICAS: Injetadas no Sidebar sob demanda quando a página de calibração está ativa
 if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
     st.sidebar.markdown("<div style='padding-left: 45px; font-size: 11px; color: #ff9800; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 1px;'>📋 Sub-páginas:</div>", unsafe_allow_html=True)
     sub_nc = st.sidebar.radio("SubNC", ["INSTRUMENTOS", "EQUIPAMENTOS DE IÇAMENTO"], key="sub_nc_radio", label_visibility="collapsed")
 
-# --- RENDERIZAÇÃO DAS PÁGINAS ---
+# --- RENDERIZAÇÃO DAS PÁGINAS PRINCIPAIS ---
+
+# INJEÇÃO DO TÍTULO GLOBAL EM TODAS AS TELAS
+st.markdown("""
+    <h1 style='text-align: center; color: #ffffff; font-size: 2.2rem; font-weight: 900; 
+               margin-bottom: 5px; margin-top: -20px; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);'>
+        SISTEMA DE APOIO A METROLOGIA
+    </h1>
+    <hr style='border: 0; border-top: 1px solid #233554; margin-bottom: 30px;'>
+""", unsafe_allow_html=True)
+
 if menu == "🛠️ Visão Geral":
-    st.markdown("### 🛠️ Visão Geral de Metrologia")
-    
+    st.markdown("### 🛠️ Dashboard Geral")
     df_vencidos = df[df['STATUS'] == 'VENCIDO']
     mask_icamento = df_vencidos[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)
-    
     qtd_instrumentos = len(df_vencidos[~mask_icamento])
     qtd_icamento = len(df_vencidos[mask_icamento])
 
     c1, c2, c3, c4 = st.columns(4)
-    with c1: render_mini_kpi("Aptos", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
-    with c2: render_mini_kpi("Atenção", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
-    with c3: render_mini_kpi("Calib. Instrumentos", qtd_instrumentos, "vencido-kpi")
-    with c4: render_mini_kpi("Calib. Içamento", qtd_icamento, "vencido-kpi")
+    with c1: render_mini_kpi("Aptos / Dispensados", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
+    with c2: render_mini_kpi("Atenção (30 dias)", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
+    with c3: render_mini_kpi("Calibração. Instrumentos", qtd_instrumentos, "vencido-kpi")
+    with c4: render_mini_kpi("Calibração. Içamento", qtd_icamento, "vencido-kpi")
     
     st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
     
     with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
-        possiveis_erros = df[
-            (df['STATUS'] == 'VENCIDO') & 
-            (df['ALERTA_DATA'] == 'SEM DATA') & 
-            (df[col_caract].astype(str).str.contains(r'\d{2}/\d{2}', na=False))
-        ]
+        possiveis_erros = df[(df['STATUS'] == 'VENCIDO') & (df['ALERTA_DATA'] == 'SEM DATA') & (df["Características"].astype(str).str.contains(r'\d{2}/\d{2}', na=False))]
         if not possiveis_erros.empty:
-            st.warning(f"Atenção: Detectamos {len(possiveis_erros)} itens que estão sem data calculada, mas possuem menção a datas no texto:")
-            st.dataframe(possiveis_erros[['Código', 'Descrição', col_caract]], use_container_width=True)
+            st.warning(f"Atenção: Detectamos {len(possiveis_erros)} itens sem data calculada, mas com menção a datas no texto:")
+            st.dataframe(possiveis_erros[['Código', 'Descrição', "Características"]], use_container_width=True)
         else:
-            st.success("🔥 Varredura concluída: Zero falsos negativos encontrados na base!")
+            st.success("🔥 Varredura concluída: Zero falsos negativos na base!")
 
 elif menu == "✅ APTOS":
     st.markdown(f"### {menu}")
     df_f = df[df['STATUS'] == 'APTOS']
     
-    # Injeção do KPI específico da página
     c1, _, _ = st.columns(3)
-    with c1: render_mini_kpi("Total Aptos", len(df_f), "apto-kpi")
+    with c1: render_mini_kpi("Total Equipamentos Aptos", len(df_f), "apto-kpi")
     st.markdown("---")
     
     fn, fc, fd = sistema_filtros(menu, True)
-    
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
     
@@ -284,22 +331,40 @@ elif menu == "✅ APTOS":
     cols = st.columns(4)
     for i, (idx, row) in enumerate(df_f.iterrows()):
         with cols[i % 4]:
-            desc = str(row.get('Descrição', 'N/I'))[:25]
+            desc = str(row.get('Descrição', 'N/I'))
             cod = str(row.get('Código', 'N/I'))
             data_str = str(row.get('DATA_STR', 'N/I'))
-            st.markdown(f"<div class='card-instrumento apto-card'><b>{desc}</b><br><small>{cod}</small><br><span style='font-size:11px;'>📅 {data_str}</span></div>", unsafe_allow_html=True)
+            
+            if data_str == "DISPENSADO":
+                badge_class = "badge-dispensa"
+                badge_text = "DISPENSADO"
+                data_exibicao = "♾️ ISENTO DE CALIBRAÇÃO"
+            else:
+                badge_class = "badge-apto"
+                badge_text = "REGULAR"
+                data_exibicao = f"📅 {data_str}"
+            
+            html_card = f"""
+            <div class='card-instrumento apto-card'>
+                <div class='badge-status {badge_class}'>{badge_text}</div>
+                <div style="flex-grow: 1;">
+                    <b style="font-size: 14px; line-height: 1.2;">{desc}</b><br>
+                    <small style="color: #a0aabf;">TAG: {cod}</small>
+                </div>
+                <hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;'>
+                <div style="font-size: 12px; font-weight: 600; text-align: center;">{data_exibicao}</div>
+            </div>"""
+            st.markdown(html_card, unsafe_allow_html=True)
 
 elif menu == "⏳ Próximos de vencer":
     st.markdown(f"### {menu}")
     df_f = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']
     
-    # Injeção do KPI específico da página
     c1, _, _ = st.columns(3)
-    with c1: render_mini_kpi("Total Próximos", len(df_f), "proximo-kpi")
+    with c1: render_mini_kpi("Equipamentos em Atenção", len(df_f), "proximo-kpi")
     st.markdown("---")
     
     fn, fc, fd = sistema_filtros(menu, True)
-    
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
     
@@ -313,13 +378,23 @@ elif menu == "⏳ Próximos de vencer":
             is_sel = idx in st.session_state.selecionados
             c_class = f"proximo-card {'card-selecionado' if is_sel else ''}"
             
-            desc = str(row.get('Descrição', 'N/I'))[:25]
+            desc = str(row.get('Descrição', 'N/I'))
             cod = str(row.get('Código', 'N/I'))
             data_str = str(row.get('DATA_STR', 'N/I'))
-            data_exibicao = f"📅 {data_str}"
-
-            st.markdown(f"<div class='card-instrumento {c_class}'><b>{desc}</b><br><small>{cod}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
-            if st.button("✅" if is_sel else "⭕", key=f"s_{idx}"):
+            
+            html_card = f"""
+            <div class='card-instrumento {c_class}'>
+                <div class='badge-status badge-proximo'>ATENÇÃO</div>
+                <div style="flex-grow: 1;">
+                    <b style="font-size: 14px; line-height: 1.2;">{desc}</b><br>
+                    <small style="color: #a0aabf;">TAG: {cod}</small>
+                </div>
+                <hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;'>
+                <div style="font-size: 13px; font-weight: 700; text-align: center; color: #F1C40F;">📅 {data_str}</div>
+            </div>"""
+            st.markdown(html_card, unsafe_allow_html=True)
+            
+            if st.button("✅" if is_sel else "⭕", key=f"s_{idx}", use_container_width=True):
                 if is_sel: st.session_state.selecionados.remove(idx)
                 else: st.session_state.selecionados.append(idx)
                 st.rerun()
@@ -331,24 +406,19 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
     suffix_nc = f"NC_{sub_ativa.replace(' ', '_')}"
     df_f = df[df['STATUS'] == 'VENCIDO']
     
-    if sub_ativa == "INSTRUMENTOS":
-        df_f = df_f[~df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
-    else:
-        df_f = df_f[df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
+    if sub_ativa == "INSTRUMENTOS": df_f = df_f[~df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
+    else: df_f = df_f[df_f[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)]
         
-    # --- KPIs DE INTELIGÊNCIA DA SUB-PÁGINA ---
     qtd_total = len(df_f)
     qtd_sem_data = len(df_f[df_f['ALERTA_DATA'].isin(['SEM DATA', 'DATA ERRADA'])])
-    qtd_vencido_real = qtd_total - qtd_sem_data
     
     c1, c2, c3 = st.columns(3)
     with c1: render_mini_kpi(f"Total na Lista", qtd_total, "vencido-kpi")
     with c2: render_mini_kpi("Falta Cadastrar Data", qtd_sem_data, "vencido-kpi")
-    with c3: render_mini_kpi("Vencimento Ultrapassado", qtd_vencido_real, "vencido-kpi")
+    with c3: render_mini_kpi("Vencimento Ultrapassado", qtd_total - qtd_sem_data, "vencido-kpi")
     st.markdown("---")
     
     fn, fc, fd = sistema_filtros(suffix_nc, True)
-    
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
     col_cod = 'Código' if 'Código' in df_f.columns else ('CODIGO' if 'CODIGO' in df_f.columns else None)
     
@@ -356,9 +426,8 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
     if fc and col_cod: df_f = df_f[df_f[col_cod].astype(str).str.contains(fc, case=False, na=False)]
     if fd: df_f = df_f[df_f['DATA_STR'].astype(str).str.contains(fd, case=False, na=False)]
 
-    if st.button("🚨 Alerta em Lote", key=f"btn_alerta_lote_{suffix_nc}", use_container_width=True):
-        if not st.session_state.selecionados:
-            popup_confirmar_envio(len(df[df['STATUS']=='PRÓXIMO VENCIMENTO']), len(df[df['STATUS']=='VENCIDO']), df[df['STATUS'].isin(['VENCIDO','PRÓXIMO VENCIMENTO'])])
+    if st.button("🚨 Disparar Alerta por E-mail", key=f"btn_alerta_lote_{suffix_nc}", use_container_width=True, type="primary"):
+        if not st.session_state.selecionados: popup_confirmar_envio(len(df[df['STATUS']=='PRÓXIMO VENCIMENTO']), len(df[df['STATUS']=='VENCIDO']), df[df['STATUS'].isin(['VENCIDO','PRÓXIMO VENCIMENTO'])])
         else:
             enviar_email_consolidado(st.session_state.config_emails, df.loc[st.session_state.selecionados])
             st.success("Enviado com sucesso!")
@@ -368,25 +437,49 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
         with cols[i % 4]:
             is_sel = idx in st.session_state.selecionados
             c_class = f"vencido-card {'card-selecionado' if is_sel else ''}"
-            
-            desc = str(row.get('Descrição', 'N/I'))[:25]
+            desc = str(row.get('Descrição', 'N/I'))
             cod = str(row.get('Código', 'N/I'))
             data_str = str(row.get('DATA_STR', 'N/I'))
             
-            if data_str == "SEM DATA": data_exibicao = "⚠️ SEM DATA"
-            elif data_str == "DATA ERRADA": data_exibicao = "❌ DATA ERRADA"
-            else: data_exibicao = f"📅 {data_str}"
+            if data_str == "SEM DATA": 
+                data_exibicao = "⚠️ DADO FALTANTE"
+                badge_class = "badge-alerta"
+                badge_text = "INCOMPLETO"
+                cor_data = "#8E44AD"
+            elif data_str == "DATA ERRADA": 
+                data_exibicao = "❌ ERRO DE DIGITAÇÃO"
+                badge_class = "badge-alerta"
+                badge_text = "REVISAR DATA"
+                cor_data = "#8E44AD"
+            else: 
+                data_exibicao = f"📅 Vencido em: {data_str}"
+                badge_class = "badge-vencido"
+                badge_text = "URGENTE"
+                cor_data = "#ff4b4b"
 
-            st.markdown(f"<div class='card-instrumento {c_class}'><b>{desc}</b><br><small>{cod}</small><br><b>{data_exibicao}</b></div>", unsafe_allow_html=True)
-            if st.button("✅" if is_sel else "⭕", key=f"s_{suffix_nc}_{idx}"):
+            html_card = f"""
+            <div class='card-instrumento {c_class}'>
+                <div class='badge-status {badge_class}'>{badge_text}</div>
+                <div style="flex-grow: 1;">
+                    <b style="font-size: 14px; line-height: 1.2;">{desc}</b><br>
+                    <small style="color: #a0aabf;">TAG: {cod}</small>
+                </div>
+                <hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;'>
+                <div style="font-size: 12px; font-weight: 700; text-align: center; color: {cor_data};">{data_exibicao}</div>
+            </div>"""
+            st.markdown(html_card, unsafe_allow_html=True)
+            
+            if st.button("✅" if is_sel else "⭕", key=f"s_{suffix_nc}_{idx}", use_container_width=True):
                 if is_sel: st.session_state.selecionados.remove(idx)
                 else: st.session_state.selecionados.append(idx)
                 st.rerun()
 
 elif menu == "⚙️ Ajustes":
-    st.markdown("### ⚙️ Ajustes de E-mail")
-    novos = st.text_input("Lista de e-mails:", value=st.session_state.config_emails)
-    if st.button("Salvar"):
+    st.markdown("### ⚙️ Ajustes de Sistema")
+    novos = st.text_input("E-mails para recebimento de alertas (separe por vírgula):", value=st.session_state.config_emails)
+    if st.button("Salvar Configurações", type="primary"):
         st.session_state.config_emails = novos
         salvar_config(novos)
-        st.success("Configuração salva!")
+        st.success("Configuração salva com sucesso!")
+
+```
