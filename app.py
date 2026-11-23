@@ -320,10 +320,15 @@ if escolha != st.session_state.pagina_ativa:
 
 menu = st.session_state.pagina_ativa
 
-# SUB-MENU CONDICIONAL
+# SUB-MENU CONDICIONAL: NECESSÁRIO CALIBRAÇÃO
 if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
     st.sidebar.markdown("<div style='padding-left: 5px; font-size: 11px; color: #ff4b4b; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Categoria:</div>", unsafe_allow_html=True)
     sub_nc = st.sidebar.radio("SubNC", ["INSTRUMENTOS", "EQUIPAMENTOS DE IÇAMENTO"], key="sub_nc_radio", label_visibility="collapsed")
+
+# SUB-MENU CONDICIONAL: MAPA DE CALIBRAÇÃO
+if menu == "🗺️ MAPA DE CALIBRAÇÃO":
+    st.sidebar.markdown("<div style='padding-left: 5px; font-size: 11px; color: #3498DB; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Visão do Mapa:</div>", unsafe_allow_html=True)
+    sub_mapa = st.sidebar.radio("SubMapa", ["MAPA ANALÍTICO", "MAPA GERAL"], key="sub_mapa_radio", label_visibility="collapsed")
 
 # ESPAÇAMENTO E BOTÕES DO RODAPÉ
 st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
@@ -512,39 +517,12 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
             st.markdown(html_card, unsafe_allow_html=True)
 
 elif menu == "🗺️ MAPA DE CALIBRAÇÃO":
-    st.markdown("### 🗺️ Mapa de Calibração — Análise de Certificados")
-    st.write("Selecione o mês da calibração para acompanhar e gerenciar a análise crítica dos certificados emitidos.")
+    visao_mapa = st.session_state.get('sub_mapa_radio', 'MAPA ANALÍTICO')
 
-    # Considera instrumentos de medição (exclui equipamentos de içamento) com data de calibração válida
     df_inst = df[
         (~df[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)) &
         (df['MES_CALIBRACAO'] != "")
     ].copy()
-
-    mes_atual_str = datetime.now().strftime('%m/%Y')
-    meses_base = df_inst['MES_CALIBRACAO'].unique().tolist()
-    if mes_atual_str not in meses_base:
-        meses_base.append(mes_atual_str)
-
-    meses_ordenados = sorted(
-        meses_base,
-        key=lambda m: datetime.strptime(m, "%m/%Y"),
-        reverse=True
-    )
-
-    c_mes, c_status, c_busca = st.columns([2, 2, 3])
-    with c_mes:
-        mes_selecionado = st.selectbox("📅 Mês da Calibração:", meses_ordenados, index=0, key="mapa_mes_sel")
-    with c_status:
-        filtro_status_cert = st.selectbox(
-            "📌 Status da Análise:",
-            ["Todos", "Pendente", "Aprovado", "Reprovado"],
-            key="mapa_status_sel"
-        )
-    with c_busca:
-        busca_cert = st.text_input("🔎 Buscar por Nome ou Código:", key="mapa_busca_txt")
-
-    df_mes = df_inst[df_inst['MES_CALIBRACAO'] == mes_selecionado].copy()
 
     def obter_registro_cert(row):
         cod_item = str(row.get('Código', '')).strip()
@@ -557,100 +535,190 @@ elif menu == "🗺️ MAPA DE CALIBRAÇÃO":
             "atualizado_em": reg.get("atualizado_em", "-")
         }
 
-    chaves_e_regs = [obter_registro_cert(r) for _, r in df_mes.iterrows()]
-    df_mes['_CHAVE_CERT'] = [x[0] for x in chaves_e_regs]
-    df_mes['_STATUS_CERT'] = [x[1]['status'] for x in chaves_e_regs]
-    df_mes['_OBS_CERT'] = [x[1]['observacao'] for x in chaves_e_regs]
-    df_mes['_ATUALIZADO_CERT'] = [x[1]['atualizado_em'] for x in chaves_e_regs]
+    chaves_e_regs = [obter_registro_cert(r) for _, r in df_inst.iterrows()]
+    df_inst['_CHAVE_CERT'] = [x[0] for x in chaves_e_regs]
+    df_inst['_STATUS_CERT'] = [x[1]['status'] for x in chaves_e_regs]
+    df_inst['_OBS_CERT'] = [x[1]['observacao'] for x in chaves_e_regs]
+    df_inst['_ATUALIZADO_CERT'] = [x[1]['atualizado_em'] for x in chaves_e_regs]
 
-    qtd_mes_total = len(df_mes)
-    qtd_pendente = len(df_mes[df_mes['_STATUS_CERT'] == "Pendente"])
-    qtd_aprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Aprovado"])
-    qtd_reprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Reprovado"])
+    if visao_mapa == "MAPA GERAL":
+        st.markdown("### 🗺️ Mapa de Calibração › Mapa Geral")
+        st.write("Panorama consolidado dos instrumentos de medição com calibração mapeada na base.")
 
-    k1, k2, k3, k4 = st.columns(4)
-    with k1: render_mini_kpi(f"Calibrados em {mes_selecionado}", qtd_mes_total, "mapa-kpi")
-    with k2: render_mini_kpi("Pendentes", qtd_pendente, "proximo-kpi")
-    with k3: render_mini_kpi("Aprovados", qtd_aprovado, "apto-kpi")
-    with k4: render_mini_kpi("Reprovados", qtd_reprovado, "vencido-kpi")
+        total_mapeados = len(df_inst)
+        total_aprovados = len(df_inst[df_inst['_STATUS_CERT'] == "Aprovado"])
+        total_pendentes = len(df_inst[df_inst['_STATUS_CERT'] == "Pendente"])
+        total_reprovados = len(df_inst[df_inst['_STATUS_CERT'] == "Reprovado"])
 
-    st.markdown("---")
+        g1, g2, g3, g4 = st.columns(4)
+        with g1: render_mini_kpi("Total Mapeados", total_mapeados, "mapa-kpi")
+        with g2: render_mini_kpi("Certificados Aprovados", total_aprovados, "apto-kpi")
+        with g3: render_mini_kpi("Pendentes de Análise", total_pendentes, "proximo-kpi")
+        with g4: render_mini_kpi("Certificados Reprovados", total_reprovados, "vencido-kpi")
 
-    df_view = df_mes.copy()
-    if filtro_status_cert != "Todos":
-        df_view = df_view[df_view['_STATUS_CERT'] == filtro_status_cert]
+        st.markdown("---")
+        st.markdown("#### 📆 Consolidado por Mês de Calibração")
 
-    col_desc = 'Descrição' if 'Descrição' in df_view.columns else ('DESCRICAO' if 'DESCRICAO' in df_view.columns else None)
-    col_cod = 'Código' if 'Código' in df_view.columns else ('CODIGO' if 'CODIGO' in df_view.columns else None)
+        if df_inst.empty:
+            st.info("Nenhum instrumento com data de calibração identificada na base.")
+        else:
+            resumo_meses = (
+                df_inst.groupby('MES_CALIBRACAO')['_STATUS_CERT']
+                .value_counts()
+                .unstack(fill_value=0)
+                .reset_index()
+            )
+            for col_st in ["Pendente", "Aprovado", "Reprovado"]:
+                if col_st not in resumo_meses.columns:
+                    resumo_meses[col_st] = 0
 
-    if busca_cert:
-        termo = busca_cert.strip()
-        mask_desc = df_view[col_desc].astype(str).str.contains(termo, case=False, na=False) if col_desc else False
-        mask_cod = df_view[col_cod].astype(str).str.contains(termo, case=False, na=False) if col_cod else False
-        df_view = df_view[mask_desc | mask_cod]
+            resumo_meses["Total"] = resumo_meses["Pendente"] + resumo_meses["Aprovado"] + resumo_meses["Reprovado"]
+            resumo_meses = resumo_meses.sort_values(
+                by="MES_CALIBRACAO",
+                key=lambda s: s.map(lambda m: datetime.strptime(m, "%m/%Y")),
+                ascending=False
+            )
+            resumo_meses = resumo_meses.rename(columns={
+                "MES_CALIBRACAO": "Mês Calibração",
+                "Pendente": "Pendentes",
+                "Aprovado": "Aprovados",
+                "Reprovado": "Reprovados"
+            })[["Mês Calibração", "Total", "Pendentes", "Aprovados", "Reprovados"]]
 
-    if df_view.empty:
-        st.info(f"Nenhum instrumento encontrado para **{mes_selecionado}** com os filtros atuais.")
+            st.dataframe(resumo_meses, use_container_width=True, hide_index=True)
+
+            st.markdown("#### 📋 Relação Geral dos Instrumentos Mapeados")
+            col_desc = 'Descrição' if 'Descrição' in df_inst.columns else ('DESCRICAO' if 'DESCRICAO' in df_inst.columns else None)
+            col_cod = 'Código' if 'Código' in df_inst.columns else ('CODIGO' if 'CODIGO' in df_inst.columns else None)
+
+            df_tabela_geral = pd.DataFrame({
+                "Código": df_inst[col_cod] if col_cod else "N/I",
+                "Descrição": df_inst[col_desc] if col_desc else "N/I",
+                "Mês Calibração": df_inst["MES_CALIBRACAO"],
+                "Data Calibração": df_inst["DATA_ULT_CALIBRACAO"].dt.strftime('%d/%m/%Y').fillna("N/I"),
+                "Vencimento": df_inst["DATA_STR"],
+                "Status Análise": df_inst["_STATUS_CERT"],
+                "Observação / Certificado": df_inst["_OBS_CERT"]
+            })
+            st.dataframe(df_tabela_geral, use_container_width=True, hide_index=True)
+
     else:
-        opcoes_status = ["Pendente", "Aprovado", "Reprovado"]
-        for i, (idx, row) in enumerate(df_view.iterrows()):
-            desc = str(row.get('Descrição', 'N/I'))
-            cod = str(row.get('Código', 'N/I'))
-            chave_cert = row['_CHAVE_CERT']
-            status_atual = row['_STATUS_CERT']
-            obs_atual = row['_OBS_CERT']
-            atualizado_em = row['_ATUALIZADO_CERT']
-            data_cal_exib = row['DATA_ULT_CALIBRACAO'].strftime('%d/%m/%Y') if pd.notna(row.get('DATA_ULT_CALIBRACAO')) else "N/I"
-            venc_exib = str(row.get('DATA_STR', 'N/I'))
+        st.markdown("### 🗺️ Mapa de Calibração › Mapa Analítico")
+        st.write("Selecione o mês da calibração para acompanhar e gerenciar a análise crítica dos certificados emitidos.")
 
-            if status_atual == "Aprovado":
-                cor_borda = "#2ecc71"
-                badge_cor = "badge-apto"
-            elif status_atual == "Reprovado":
-                cor_borda = "#ff4b4b"
-                badge_cor = "badge-vencido"
-            else:
-                cor_borda = "#F1C40F"
-                badge_cor = "badge-proximo"
+        mes_atual_str = datetime.now().strftime('%m/%Y')
+        meses_base = df_inst['MES_CALIBRACAO'].unique().tolist()
+        if mes_atual_str not in meses_base:
+            meses_base.append(mes_atual_str)
 
-            with st.container():
-                st.markdown(f"""
-                <div style="background-color:#112240; border-left:5px solid {cor_borda}; border-radius:10px; padding:14px 18px; margin-bottom:8px; position:relative;">
-                    <span class="badge-status {badge_cor}" style="top:-10px; left:90px;">{status_atual}</span>
-                    <div style="font-size:15px; font-weight:800; color:#ffffff; margin-top:4px;">{desc} <span style="color:#9099b2; font-weight:600;">({cod})</span></div>
-                    <div style="font-size:12px; color:#b0b4c4; margin-top:4px;">
-                        🛠️ Calibração: <b>{data_cal_exib}</b> &nbsp;|&nbsp; 📅 Vencimento: <b>{venc_exib}</b> &nbsp;|&nbsp; 🕒 Atualizado: <b>{atualizado_em}</b>
+        meses_ordenados = sorted(
+            meses_base,
+            key=lambda m: datetime.strptime(m, "%m/%Y"),
+            reverse=True
+        )
+
+        c_mes, c_status, c_busca = st.columns([2, 2, 3])
+        with c_mes:
+            mes_selecionado = st.selectbox("📅 Mês da Calibração:", meses_ordenados, index=0, key="mapa_mes_sel")
+        with c_status:
+            filtro_status_cert = st.selectbox(
+                "📌 Status da Análise:",
+                ["Todos", "Pendente", "Aprovado", "Reprovado"],
+                key="mapa_status_sel"
+            )
+        with c_busca:
+            busca_cert = st.text_input("🔎 Buscar por Nome ou Código:", key="mapa_busca_txt")
+
+        df_mes = df_inst[df_inst['MES_CALIBRACAO'] == mes_selecionado].copy()
+
+        qtd_mes_total = len(df_mes)
+        qtd_pendente = len(df_mes[df_mes['_STATUS_CERT'] == "Pendente"])
+        qtd_aprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Aprovado"])
+        qtd_reprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Reprovado"])
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1: render_mini_kpi(f"Calibrados em {mes_selecionado}", qtd_mes_total, "mapa-kpi")
+        with k2: render_mini_kpi("Pendentes", qtd_pendente, "proximo-kpi")
+        with k3: render_mini_kpi("Aprovados", qtd_aprovado, "apto-kpi")
+        with k4: render_mini_kpi("Reprovados", qtd_reprovado, "vencido-kpi")
+
+        st.markdown("---")
+
+        df_view = df_mes.copy()
+        if filtro_status_cert != "Todos":
+            df_view = df_view[df_view['_STATUS_CERT'] == filtro_status_cert]
+
+        col_desc = 'Descrição' if 'Descrição' in df_view.columns else ('DESCRICAO' if 'DESCRICAO' in df_view.columns else None)
+        col_cod = 'Código' if 'Código' in df_view.columns else ('CODIGO' if 'CODIGO' in df_view.columns else None)
+
+        if busca_cert:
+            termo = busca_cert.strip()
+            mask_desc = df_view[col_desc].astype(str).str.contains(termo, case=False, na=False) if col_desc else False
+            mask_cod = df_view[col_cod].astype(str).str.contains(termo, case=False, na=False) if col_cod else False
+            df_view = df_view[mask_desc | mask_cod]
+
+        if df_view.empty:
+            st.info(f"Nenhum instrumento encontrado para **{mes_selecionado}** com os filtros atuais.")
+        else:
+            opcoes_status = ["Pendente", "Aprovado", "Reprovado"]
+            for i, (idx, row) in enumerate(df_view.iterrows()):
+                desc = str(row.get('Descrição', 'N/I'))
+                cod = str(row.get('Código', 'N/I'))
+                chave_cert = row['_CHAVE_CERT']
+                status_atual = row['_STATUS_CERT']
+                obs_atual = row['_OBS_CERT']
+                atualizado_em = row['_ATUALIZADO_CERT']
+                data_cal_exib = row['DATA_ULT_CALIBRACAO'].strftime('%d/%m/%Y') if pd.notna(row.get('DATA_ULT_CALIBRACAO')) else "N/I"
+                venc_exib = str(row.get('DATA_STR', 'N/I'))
+
+                if status_atual == "Aprovado":
+                    cor_borda = "#2ecc71"
+                    badge_cor = "badge-apto"
+                elif status_atual == "Reprovado":
+                    cor_borda = "#ff4b4b"
+                    badge_cor = "badge-vencido"
+                else:
+                    cor_borda = "#F1C40F"
+                    badge_cor = "badge-proximo"
+
+                with st.container():
+                    st.markdown(f"""
+                    <div style="background-color:#112240; border-left:5px solid {cor_borda}; border-radius:10px; padding:14px 18px; margin-bottom:8px; position:relative;">
+                        <span class="badge-status {badge_cor}" style="top:-10px; left:90px;">{status_atual}</span>
+                        <div style="font-size:15px; font-weight:800; color:#ffffff; margin-top:4px;">{desc} <span style="color:#9099b2; font-weight:600;">({cod})</span></div>
+                        <div style="font-size:12px; color:#b0b4c4; margin-top:4px;">
+                            🛠️ Calibração: <b>{data_cal_exib}</b> &nbsp;|&nbsp; 📅 Vencimento: <b>{venc_exib}</b> &nbsp;|&nbsp; 🕒 Atualizado: <b>{atualizado_em}</b>
+                        </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
-                c_sel, c_obs, c_btn = st.columns([2, 4, 1])
-                idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
-                novo_status = c_sel.selectbox(
-                    "Status do certificado",
-                    opcoes_status,
-                    index=idx_st,
-                    key=f"cert_st_{mes_selecionado}_{idx}",
-                    label_visibility="collapsed"
-                )
-                nova_obs = c_obs.text_input(
-                    "Nº do certificado / observação da análise",
-                    value=obs_atual,
-                    placeholder="Ex: Cert. 1234/2026 - Aprovado conforme critério...",
-                    key=f"cert_obs_{mes_selecionado}_{idx}",
-                    label_visibility="collapsed"
-                )
-                if c_btn.button("💾 Salvar", key=f"cert_save_{mes_selecionado}_{idx}", use_container_width=True):
-                    st.session_state.analises_certificados[chave_cert] = {
-                        "status": novo_status,
-                        "observacao": nova_obs.strip(),
-                        "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
-                    }
-                    salvar_analises_certificados(st.session_state.analises_certificados)
-                    st.success(f"Análise de {cod} salva como {novo_status}.")
-                    st.rerun()
+                    c_sel, c_obs, c_btn = st.columns([2, 4, 1])
+                    idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
+                    novo_status = c_sel.selectbox(
+                        "Status do certificado",
+                        opcoes_status,
+                        index=idx_st,
+                        key=f"cert_st_{mes_selecionado}_{idx}",
+                        label_visibility="collapsed"
+                    )
+                    nova_obs = c_obs.text_input(
+                        "Nº do certificado / observação da análise",
+                        value=obs_atual,
+                        placeholder="Ex: Cert. 1234/2026 - Aprovado conforme critério...",
+                        key=f"cert_obs_{mes_selecionado}_{idx}",
+                        label_visibility="collapsed"
+                    )
+                    if c_btn.button("💾 Salvar", key=f"cert_save_{mes_selecionado}_{idx}", use_container_width=True):
+                        st.session_state.analises_certificados[chave_cert] = {
+                            "status": novo_status,
+                            "observacao": nova_obs.strip(),
+                            "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+                        }
+                        salvar_analises_certificados(st.session_state.analises_certificados)
+                        st.success(f"Análise de {cod} salva como {novo_status}.")
+                        st.rerun()
 
-                st.markdown("<div style='margin-bottom:14px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='margin-bottom:14px;'></div>", unsafe_allow_html=True)
 
 elif menu == "⚙️ CONFIGURAÇÕES":
     st.markdown("### ⚙️ Gestão de E-mails para Alertas")
