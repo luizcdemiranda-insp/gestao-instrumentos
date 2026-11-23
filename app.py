@@ -40,83 +40,90 @@ def salvar_analises_certificados(dados):
 
 # --- INICIALIZAÇÃO DE MEMÓRIA ---
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "📊 VISÃO GERAL"
+if 'sub_nc_ativa' not in st.session_state: st.session_state.sub_nc_ativa = "INSTRUMENTOS"
+if 'sub_mapa_ativa' not in st.session_state: st.session_state.sub_mapa_ativa = "MAPA ANALÍTICO"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = carregar_emails()
 if 'analises_certificados' not in st.session_state: st.session_state.analises_certificados = carregar_analises_certificados()
 
-# --- MOTOR CSS GLOBAL E SIDEBAR (PADRÃO MERCÚRIO FORÇADO) ---
+# --- MOTOR CSS GLOBAL E SIDEBAR (OPÇÃO 2: BARRA TÁTICA + CONTÊINER ESCURO) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0a192f; color: #e0e0e0; }
     
     /* SIDEBAR CONTAINER */
-    section[data-testid="stSidebar"] { background-color: #121212; border-right: 1px solid #222222; } 
-    
-    /* FORÇAR ESTILO DOS BOTÕES DA SIDEBAR */
-    section[data-testid="stSidebar"] .stButton > button {
-        background-color: #1e1e1e !important; 
-        border: 1px solid #333333 !important; 
-        padding: 10px 15px !important;
-        border-radius: 8px !important; 
-        font-weight: 600 !important; 
-        color: #b0b4c4 !important; 
-        width: 100% !important;
-        transition: all 0.2s ease !important;
-    }
-    section[data-testid="stSidebar"] .stButton > button:hover { 
-        border-color: #ff4b4b !important; 
-        color: white !important; 
-        background-color: #252525 !important;
-    }
-    
-    /* BOTÃO PRIMÁRIO (DISPARAR ALERTA) */
-    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #ff4b4b, #e63939) !important; 
-        color: white !important; 
-        border: none !important;
-        box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4) !important; 
-        letter-spacing: 1px !important; 
-        text-transform: uppercase !important; 
-        font-weight: 800 !important;
-    }
-    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"]:hover {
-        transform: translateY(-2px); 
-        box-shadow: 0 6px 20px rgba(255, 75, 75, 0.6) !important;
+    section[data-testid="stSidebar"] {
+        background-color: #121212;
+        border-right: 1px solid #222222;
     }
 
-    /* ESTILIZAÇÃO DO RADIO GROUP NA SIDEBAR (MENU ESTILO MERCÚRIO) */
-    section[data-testid="stSidebar"] div[role="radiogroup"] {
-        gap: 6px !important;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        background-color: transparent !important; 
-        border: none !important; 
-        padding: 12px 15px !important;
-        margin-bottom: 0px !important; 
-        font-weight: 700 !important; 
-        font-size: 13px !important; 
-        display: flex !important; 
-        align-items: center !important; 
-        width: 100% !important; 
-        color: #9099b2 !important; 
-        border-radius: 8px !important; 
-        cursor: pointer !important; 
-        letter-spacing: 0.5px !important;
-        transition: background 0.2s ease, color 0.2s ease !important;
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:hover { 
-        color: white !important; 
-        background-color: rgba(255, 255, 255, 0.05) !important; 
-    }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label div[data-testid="stMarkdownContainer"] p {
-        font-size: 13px !important;
+    /* BOTÕES PADRÃO DA SIDEBAR (ITENS INATIVOS E AÇÕES) */
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: transparent !important;
+        border: 1px solid transparent !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
         font-weight: 700 !important;
+        font-size: 13px !important;
+        color: #9aa3b8 !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        text-align: left !important;
+        letter-spacing: 0.4px !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease !important;
     }
-    
-    /* ITEM SELECIONADO NO RADIO (BLOCO SÓLIDO VERMELHO MERCÚRIO) */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label:has(input:checked) {
-        color: #ffffff !important; 
-        background: linear-gradient(135deg, #ff4b4b, #ff6b6b) !important; 
-        box-shadow: 0 4px 12px rgba(255, 75, 75, 0.35) !important;
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #1E2130 !important;
+        color: #ffffff !important;
+        border-color: #2d3348 !important;
+    }
+
+    /* ITEM ATIVO NA SIDEBAR (CONTÊINER ESCURO + BARRA TÁTICA LATERAL) */
+    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
+        background-color: #1E2130 !important;
+        color: #ffffff !important;
+        border: 1px solid #2e344b !important;
+        border-left: 4px solid #ff4b4b !important;
+        border-radius: 4px 8px 8px 4px !important;
+        font-weight: 800 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"]:hover {
+        background-color: #24283a !important;
+        color: #ffffff !important;
+    }
+
+    /* BOTÃO DE ALERTA NO RODAPÉ */
+    section[data-testid="stSidebar"] .alerta-sidebar-wrap .stButton > button {
+        background: linear-gradient(135deg, #ff4b4b, #d63031) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-left: none !important;
+        border-radius: 8px !important;
+        justify-content: center !important;
+        text-align: center !important;
+        text-transform: uppercase !important;
+        font-weight: 800 !important;
+        box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35) !important;
+    }
+    section[data-testid="stSidebar"] .alerta-sidebar-wrap .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 18px rgba(255, 75, 75, 0.55) !important;
+    }
+
+    /* BOTÃO ATUALIZAR PLANILHA NO RODAPÉ */
+    section[data-testid="stSidebar"] .atualizar-sidebar-wrap .stButton > button {
+        background-color: #181a22 !important;
+        border: 1px solid #2c3142 !important;
+        border-radius: 8px !important;
+        justify-content: center !important;
+        text-align: center !important;
+        color: #c5cde0 !important;
+    }
+    section[data-testid="stSidebar"] .atualizar-sidebar-wrap .stButton > button:hover {
+        border-color: #3498DB !important;
+        color: #ffffff !important;
+        background-color: #1E2130 !important;
     }
 
     /* GLASSMORPHISM NOS KPIS */
@@ -275,7 +282,7 @@ def popup_confirmar_envio(qtd, df_alvo):
             st.success("Enviado com sucesso!")
         except Exception as e: st.error(f"Erro: {e}")
 
-# --- NAVEGAÇÃO LATERAL (ESTILO MERCÚRIO) ---
+# --- NAVEGAÇÃO LATERAL (OPÇÃO 2: BOTÕES + BARRA TÁTICA LATERAL) ---
 df = processar_dados(carregar_dados())
 
 col_familia = next((c for c in df.columns if 'FAMÍLIA' in c.upper() or 'FAMILIA' in c.upper()), "FAMÍLIA DE PRODUTO")
@@ -287,7 +294,7 @@ def renderizar_logo_sidebar():
         with open(caminho_imagem, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
         html_logo = f"""
-        <div style="display: flex; align-items: center; margin-bottom: 25px; margin-top: -10px;">
+        <div style="display: flex; align-items: center; margin-bottom: 22px; margin-top: -10px;">
             <img src="data:image/png;base64,{encoded_string}" style="width: 35px; margin-right: 12px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
             <h2 style="color: #ffffff; margin: 0; font-weight: 900; letter-spacing: 1px; font-size: 20px;">TEMPERMAR</h2>
         </div>
@@ -298,10 +305,9 @@ def renderizar_logo_sidebar():
 
 renderizar_logo_sidebar()
 
-# IDENTIDADE E CABEÇALHO DO MENU
-st.sidebar.markdown("<h4 style='color: white; font-weight: 700; margin-bottom: 20px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
-st.sidebar.markdown("<div style='display: flex; align-items: center; color: white; font-size: 15px; font-weight: 600; letter-spacing: 1px;'><span style='font-size: 18px; margin-right: 8px;'>🖥️</span> NAVEGAÇÃO</div>", unsafe_allow_html=True)
-st.sidebar.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 8px; margin-bottom: 12px;'>", unsafe_allow_html=True)
+st.sidebar.markdown("<h4 style='color: #e0e6f0; font-weight: 700; margin-bottom: 18px; font-size: 15px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='display: flex; align-items: center; color: #ffffff; font-size: 13px; font-weight: 800; letter-spacing: 1.2px;'><span style='font-size: 16px; margin-right: 8px;'>🖥️</span> NAVEGAÇÃO</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 8px; margin-bottom: 14px;'>", unsafe_allow_html=True)
 
 paginas_metro = [
     "📊 VISÃO GERAL",
@@ -311,35 +317,50 @@ paginas_metro = [
     "🗺️ MAPA DE CALIBRAÇÃO",
     "⚙️ CONFIGURAÇÕES"
 ]
-idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
-escolha = st.sidebar.radio("Navegacao Principal", paginas_metro, index=idx, label_visibility="collapsed")
 
-if escolha != st.session_state.pagina_ativa:
-    st.session_state.pagina_ativa = escolha
-    st.rerun()
+for idx_p, pag in enumerate(paginas_metro):
+    ativo = (st.session_state.pagina_ativa == pag)
+    if st.sidebar.button(pag, key=f"nav_main_{idx_p}", use_container_width=True, type="primary" if ativo else "secondary"):
+        st.session_state.pagina_ativa = pag
+        st.rerun()
+
+    # SUB-OPÇÕES DE NECESSÁRIO CALIBRAÇÃO
+    if pag == "🚨 NECESSÁRIO CALIBRAÇÃO" and ativo:
+        st.sidebar.markdown("<div style='margin-left: 14px; padding-left: 10px; border-left: 2px solid #2d3348; margin-top: 4px; margin-bottom: 8px;'>", unsafe_allow_html=True)
+        for idx_s, sub_op in enumerate(["INSTRUMENTOS", "EQUIPAMENTOS DE IÇAMENTO"]):
+            sub_ativo = (st.session_state.sub_nc_ativa == sub_op)
+            if st.sidebar.button(f"↳ {sub_op}", key=f"sub_nc_btn_{idx_s}", use_container_width=True, type="primary" if sub_ativo else "secondary"):
+                st.session_state.sub_nc_ativa = sub_op
+                st.rerun()
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+    # SUB-OPÇÕES DE MAPA DE CALIBRAÇÃO
+    if pag == "🗺️ MAPA DE CALIBRAÇÃO" and ativo:
+        st.sidebar.markdown("<div style='margin-left: 14px; padding-left: 10px; border-left: 2px solid #2d3348; margin-top: 4px; margin-bottom: 8px;'>", unsafe_allow_html=True)
+        for idx_m, sub_m in enumerate(["MAPA ANALÍTICO", "MAPA GERAL"]):
+            sub_m_ativo = (st.session_state.sub_mapa_ativa == sub_m)
+            if st.sidebar.button(f"↳ {sub_m}", key=f"sub_mapa_btn_{idx_m}", use_container_width=True, type="primary" if sub_m_ativo else "secondary"):
+                st.session_state.sub_mapa_ativa = sub_m
+                st.rerun()
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
 menu = st.session_state.pagina_ativa
-
-# SUB-MENU CONDICIONAL: NECESSÁRIO CALIBRAÇÃO
-if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
-    st.sidebar.markdown("<div style='padding-left: 5px; font-size: 11px; color: #ff4b4b; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Categoria:</div>", unsafe_allow_html=True)
-    sub_nc = st.sidebar.radio("SubNC", ["INSTRUMENTOS", "EQUIPAMENTOS DE IÇAMENTO"], key="sub_nc_radio", label_visibility="collapsed")
-
-# SUB-MENU CONDICIONAL: MAPA DE CALIBRAÇÃO
-if menu == "🗺️ MAPA DE CALIBRAÇÃO":
-    st.sidebar.markdown("<div style='padding-left: 5px; font-size: 11px; color: #3498DB; font-weight: bold; text-transform: uppercase; margin-top: 10px; margin-bottom: 5px; letter-spacing: 1px;'>📋 Visão do Mapa:</div>", unsafe_allow_html=True)
-    sub_mapa = st.sidebar.radio("SubMapa", ["MAPA ANALÍTICO", "MAPA GERAL"], key="sub_mapa_radio", label_visibility="collapsed")
+sub_nc = st.session_state.sub_nc_ativa
+visao_mapa = st.session_state.sub_mapa_ativa
 
 # ESPAÇAMENTO E BOTÕES DO RODAPÉ
 st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
 
 if menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
-    disparar = st.sidebar.button("🚨 Disparar Alerta", use_container_width=True, type="primary")
-    st.sidebar.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div class='alerta-sidebar-wrap'>", unsafe_allow_html=True)
+    disparar = st.sidebar.button("🚨 Disparar Alerta", key="btn_disparar_rodape", use_container_width=True)
+    st.sidebar.markdown("</div><div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
-if st.sidebar.button("🔄 Atualizar Planilha", use_container_width=True):
+st.sidebar.markdown("<div class='atualizar-sidebar-wrap'>", unsafe_allow_html=True)
+if st.sidebar.button("🔄 Atualizar Planilha", key="btn_atualizar_rodape", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
+st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
 # --- RENDERIZAÇÃO DAS PÁGINAS PRINCIPAIS ---
 
@@ -517,8 +538,6 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
             st.markdown(html_card, unsafe_allow_html=True)
 
 elif menu == "🗺️ MAPA DE CALIBRAÇÃO":
-    visao_mapa = st.session_state.get('sub_mapa_radio', 'MAPA ANALÍTICO')
-
     df_inst = df[
         (~df[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)) &
         (df['MES_CALIBRACAO'] != "")
