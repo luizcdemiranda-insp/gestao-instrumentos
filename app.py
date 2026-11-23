@@ -61,6 +61,21 @@ st.markdown("""
     .kpi-container:hover { transform: translateY(-3px); }
     .kpi-value { font-size: 28px; font-weight: 900; line-height: 1.1; margin: 5px 0; }
     .kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; }
+
+    /* VARIANTE COMPACTA PARA CANTO SUPERIOR DIREITO */
+    .kpi-container.kpi-compact {
+        padding: 8px 14px;
+        margin-bottom: 0px;
+        border-radius: 10px;
+    }
+    .kpi-container.kpi-compact .kpi-value {
+        font-size: 22px;
+        margin: 0px;
+    }
+    .kpi-container.kpi-compact .kpi-label {
+        font-size: 10px;
+        letter-spacing: 0.4px;
+    }
     
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
     .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
@@ -176,8 +191,9 @@ def enviar_email_consolidado(destinatarios, df_criticos):
         smtp.login(email_usuario, email_senha)
         smtp.send_message(msg)
 
-def render_mini_kpi(label, valor, classe):
-    st.markdown(f'<div class="kpi-container {classe}"><div class="kpi-value">{valor}</div><div class="kpi-label">{label}</div></div>', unsafe_allow_html=True)
+def render_mini_kpi(label, valor, classe, compacto=False):
+    extra_cls = " kpi-compact" if compacto else ""
+    st.markdown(f'<div class="kpi-container {classe}{extra_cls}"><div class="kpi-value">{valor}</div><div class="kpi-label">{label}</div></div>', unsafe_allow_html=True)
 
 def sistema_filtros():
     st.markdown("##### 🔍 Filtros de pesquisa")
@@ -320,7 +336,7 @@ st.markdown("""
                margin-bottom: 5px; margin-top: -20px; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 4px 10px rgba(0,0,0,0.5);'>
         SISTEMA DE APOIO A METROLOGIA
     </h1>
-    <hr style='border: 0; border-top: 1px solid #233554; margin-bottom: 30px;'>
+    <hr style='border: 0; border-top: 1px solid #233554; margin-bottom: 24px;'>
 """, unsafe_allow_html=True)
 
 if menu_selecionado == "VISÃO GERAL":
@@ -347,10 +363,12 @@ if menu_selecionado == "VISÃO GERAL":
             st.success("🔥 Varredura concluída: Zero falsos negativos na base!")
 
 elif menu_selecionado == "EQUIPAMENTOS APTOS":
-    st.markdown("### ✅ Equipamentos Aptos")
     df_f = df[df['STATUS'] == 'APTOS']
-    c1, _, _ = st.columns(3)
-    with c1: render_mini_kpi("Total Equipamentos Aptos", len(df_f), "apto-kpi")
+    col_tit, col_kpi = st.columns([3.5, 1.5], vertical_alignment="center")
+    with col_tit:
+        st.markdown("### ✅ Equipamentos Aptos")
+    with col_kpi:
+        render_mini_kpi("Total Equipamentos Aptos", len(df_f), "apto-kpi", compacto=True)
     st.markdown("---")
     fn, fc, fd = sistema_filtros()
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
@@ -378,10 +396,12 @@ elif menu_selecionado == "EQUIPAMENTOS APTOS":
             </div>""", unsafe_allow_html=True)
 
 elif menu_selecionado == "PRÓXIMOS DO VENCIMENTO":
-    st.markdown("### ⏳ Próximos do Vencimento")
     df_f = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']
-    c1, _, _ = st.columns(3)
-    with c1: render_mini_kpi("Equipamentos em Atenção", len(df_f), "proximo-kpi")
+    col_tit, col_kpi = st.columns([3.5, 1.5], vertical_alignment="center")
+    with col_tit:
+        st.markdown("### ⏳ Próximos do Vencimento")
+    with col_kpi:
+        render_mini_kpi("Equipamentos em Atenção", len(df_f), "proximo-kpi", compacto=True)
     st.markdown("---")
     fn, fc, fd = sistema_filtros()
     col_desc = 'Descrição' if 'Descrição' in df_f.columns else ('DESCRICAO' if 'DESCRICAO' in df_f.columns else None)
