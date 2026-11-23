@@ -221,7 +221,7 @@ def renderizar_logo_sidebar():
             encoded_string = base64.b64encode(image_file.read()).decode()
         html_logo = f"""
         <div style="display: flex; align-items: center; margin-bottom: 16px; margin-top: -10px;">
-            <img src="data:image/png;base64,{encoded_string}" style="width: 34px; margin-right: 12px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
+            <img src="data:image/png;base64,{encoded_string}" style="width: 34px; margin-right: 12px; border-radius: 6px; mix-blend-mode: lighten;">
             <h2 style="color: #ffffff; margin: 0; font-weight: 900; letter-spacing: 1px; font-size: 20px;">TEMPERMAR</h2>
         </div>
         """
@@ -231,7 +231,7 @@ def renderizar_logo_sidebar():
 
 with st.sidebar:
     renderizar_logo_sidebar()
-    st.markdown("<h4 style='color: #e0e6f0; font-weight: 700; margin-bottom: 12px; font-size: 15px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color: #e0e6f0; font-weight: 700; margin-bottom: 14px; font-size: 15px;'>Olá, Luiz Cláudio</h4>", unsafe_allow_html=True)
 
     menu_opcoes = [
         "VISÃO GERAL",
@@ -251,14 +251,12 @@ with st.sidebar:
     ]
 
     menu_selecionado = option_menu(
-        menu_title="NAVEGAÇÃO",
+        menu_title=None,
         options=menu_opcoes,
         icons=menu_icones,
-        menu_icon="display",
         default_index=0,
         styles={
-            "container": {"padding": "6px 0", "background-color": "#121212"},
-            "menu-title": {"color": "#ffffff", "font-size": "13px", "font-weight": "800", "letter-spacing": "1px", "margin-bottom": "8px"},
+            "container": {"padding": "4px 0", "background-color": "#121212"},
             "icon": {"color": "#9aa3b8", "font-size": "15px"},
             "nav-link": {
                 "font-size": "12.5px",
