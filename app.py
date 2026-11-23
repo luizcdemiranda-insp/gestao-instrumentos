@@ -1,20 +1,3 @@
-Perfeito! Removi a linha `"Olá, Luiz Cláudio"` de dentro do `with st.sidebar:` para a logo da TEMPERMAR ir direto ao menu de navegação.
-
-### Trecho ajustado na sidebar
-
-```python
-with st.sidebar:
-    renderizar_logo_sidebar()
-
-    menu_opcoes = [
-
-```
-
----
-
-### Código Completo Atualizado
-
-```python
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
@@ -626,7 +609,3 @@ elif menu_selecionado == "CONFIGURAÇÕES":
             st.session_state.config_emails.remove(email)
             salvar_config(st.session_state.config_emails)
             st.rerun()
-
-```
-
-Há mais algum ajuste na barra lateral ou nas telas que você queira fazer?
