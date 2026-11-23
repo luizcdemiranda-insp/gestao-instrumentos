@@ -221,7 +221,7 @@ def renderizar_logo_sidebar():
             encoded_string = base64.b64encode(image_file.read()).decode()
         html_logo = f"""
         <div style="display: flex; align-items: center; margin-bottom: 16px; margin-top: -10px;">
-            <img src="data:image/png;base64,{encoded_string}" style="width: 34px; margin-right: 12px; border-radius: 6px; mix-blend-mode: lighten;">
+            <img src="data:image/png;base64,{encoded_string}" style="width: 36px; height: 36px; object-fit: cover; margin-right: 12px; border-radius: 50%; border: 1px solid #2a2f42; filter: brightness(0.88) contrast(1.25);">
             <h2 style="color: #ffffff; margin: 0; font-weight: 900; letter-spacing: 1px; font-size: 20px;">TEMPERMAR</h2>
         </div>
         """
