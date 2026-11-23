@@ -170,7 +170,7 @@ def processar_dados(df):
         if alerta in ["SEM DATA", "DATA ERRADA"]: return "VENCIDO"
         if pd.isna(row.get('DATA_CALIBRACAO')): return "APTOS" 
         dias = (row.get('DATA_CALIBRACAO') - hoje).days
-        return "VENCIDO" if dias < 0 else ("PRÓXIMO VENCIMENTO" if dias <= 30 else "APTOS")
+        return "VENCIDO" if dias < 0 else ("PRÓXIMO DE VENCER" if dias <= 30 else "APTOS")
 
     df['STATUS'] = df.apply(classificar, axis=1)
     return df
@@ -236,7 +236,7 @@ with st.sidebar:
     menu_opcoes = [
         "VISÃO GERAL",
         "EQUIPAMENTOS APTOS",
-        "PRÓXIMOS DO VENCIMENTO",
+        "PRÓXIMO DE VENCER",
         "NECESSÁRIO CALIBRAÇÃO",
         "MAPA DE CALIBRAÇÃO",
         "CONFIGURAÇÕES"
@@ -348,7 +348,7 @@ if menu_selecionado == "VISÃO GERAL":
 
     c1, c2, c3, c4 = st.columns(4)
     with c1: render_mini_kpi("Aptos / Dispensados", len(df[df['STATUS'] == 'APTOS']), "apto-kpi")
-    with c2: render_mini_kpi("Atenção (30 dias)", len(df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']), "proximo-kpi")
+    with c2: render_mini_kpi("Atenção (30 dias)", len(df[df['STATUS'] == 'PRÓXIMO DE VENCER']), "proximo-kpi")
     with c3: render_mini_kpi("Calibração. Instrumentos", qtd_instrumentos, "vencido-kpi")
     with c4: render_mini_kpi("Calibração. Içamento", qtd_icamento, "vencido-kpi")
     
@@ -395,11 +395,11 @@ elif menu_selecionado == "EQUIPAMENTOS APTOS":
                 <div style="font-size: 12px; font-weight: 600; text-align: center;">{data_exibicao}</div>
             </div>""", unsafe_allow_html=True)
 
-elif menu_selecionado == "PRÓXIMOS DO VENCIMENTO":
-    df_f = df[df['STATUS'] == 'PRÓXIMO VENCIMENTO']
+elif menu_selecionado == "PRÓXIMO DE VENCER":
+    df_f = df[df['STATUS'] == 'PRÓXIMO DE VENCER']
     col_tit, col_kpi = st.columns([3.5, 1.5], vertical_alignment="center")
     with col_tit:
-        st.markdown("### ⏳ Próximos do Vencimento")
+        st.markdown("### ⏳ Próximo de Vencer")
     with col_kpi:
         render_mini_kpi("Equipamentos em Atenção", len(df_f), "proximo-kpi", compacto=True)
     st.markdown("---")
@@ -575,9 +575,10 @@ elif menu_selecionado == "MAPA DE CALIBRAÇÃO":
                     """, unsafe_allow_html=True)
                     c_sel, c_obs, c_btn = st.columns([2, 4, 1])
                     idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
-                    novo_status = c_sel.selectbox("Status do certificado", opcoes_status, index=idx_st, key=f"cert_st_{mes_selecionado}_{idx}", label_visibility="collapsed")
-                    nova_obs = c_obs.text_input("Nº do certificado / observação da análise", value=obs_atual, placeholder="Ex: Cert. 1234/2026 - Aprovado conforme critério...", key=f"cert_obs_{mes_selecionado}_{idx}", label_visibility="collapsed")
-                    if c_btn.button("💾 Salvar", key=f"cert_save_{mes_selecionado}_{idx}", use_container_width=True):
+                    key_base = f"{mes_selecionado}_{i}_{cod}"
+                    novo_status = c_sel.selectbox("Status do certificado", opcoes_status, index=idx_st, key=f"cert_st_{key_base}", label_visibility="collapsed")
+                    nova_obs = c_obs.text_input("Nº do certificado / observação da análise", value=obs_atual, placeholder="Ex: Cert. 1234/2026 - Aprovado conforme critério...", key=f"cert_obs_{key_base}", label_visibility="collapsed")
+                    if c_btn.button("💾 Salvar", key=f"cert_save_{key_base}", use_container_width=True):
                         st.session_state.analises_certificados[chave_cert] = {
                             "status": novo_status,
                             "observacao": nova_obs.strip(),
