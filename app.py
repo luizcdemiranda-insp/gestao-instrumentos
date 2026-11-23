@@ -12,7 +12,7 @@ import base64
 # --- CONFIGURAÇÃO E ENGINE VISUAL ---
 st.set_page_config(page_title="Monitoramento de Instrumentos", layout="wide")
 
-# --- GERENCIAMENTO DE CONFIGURAÇÕES (E-MAILS) ---
+# --- GERENCIAMENTO DE CONFIGURAÇÕES (E-MAILS E CERTIFICADOS) ---
 def carregar_emails():
     if os.path.exists("config.json"):
         try:
@@ -24,9 +24,24 @@ def carregar_emails():
 def salvar_config(emails):
     with open("config.json", "w") as f: json.dump({"emails": emails}, f)
 
+def carregar_analises_certificados():
+    if os.path.exists("certificados_analise.json"):
+        try:
+            with open("certificados_analise.json", "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                if isinstance(dados, dict):
+                    return dados
+        except: pass
+    return {}
+
+def salvar_analises_certificados(dados):
+    with open("certificados_analise.json", "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=2)
+
 # --- INICIALIZAÇÃO DE MEMÓRIA ---
 if 'pagina_ativa' not in st.session_state: st.session_state.pagina_ativa = "📊 VISÃO GERAL"
 if 'config_emails' not in st.session_state: st.session_state.config_emails = carregar_emails()
+if 'analises_certificados' not in st.session_state: st.session_state.analises_certificados = carregar_analises_certificados()
 
 # --- MOTOR CSS GLOBAL E SIDEBAR (PADRÃO MERCÚRIO FORÇADO) ---
 st.markdown("""
@@ -92,7 +107,6 @@ st.markdown("""
         color: white !important; 
         background-color: rgba(255, 255, 255, 0.05) !important; 
     }
-    /* Ocultar o círculo nativo do rádio */
     section[data-testid="stSidebar"] div[role="radiogroup"] > label div[data-testid="stMarkdownContainer"] p {
         font-size: 13px !important;
         font-weight: 700 !important;
@@ -119,6 +133,7 @@ st.markdown("""
     .vencido-kpi { color: #ff4b4b; border-bottom: 3px solid #ff4b4b; }
     .proximo-kpi { color: #fcc419; border-bottom: 3px solid #fcc419; }
     .apto-kpi { color: #2ecc71; border-bottom: 3px solid #2ecc71; }
+    .mapa-kpi { color: #3498DB; border-bottom: 3px solid #3498DB; }
 
     /* CARDS EM GRID PERFEITO E EFEITO HOVER */
     .card-instrumento { 
@@ -167,7 +182,7 @@ def processar_dados(df):
         
     def extrair_vencimento(texto):
         if pd.isna(texto) or str(texto).strip().upper() in ["NAN", "N/I", "NONE", ""]: 
-            return None, "SEM DATA"
+            return None, "SEM DATA", None
             
         t_ajustado = str(texto).lower()
         t_ajustado = re.sub(r'[áàâãä]', 'a', t_ajustado)
@@ -180,25 +195,32 @@ def processar_dados(df):
         t_ajustado = " ".join(t_ajustado.split())
         
         padrao_dispensa = r'd[ei]spensa\s+(?:de\s+)?calibracao'
-        if re.search(padrao_dispensa, t_ajustado): return None, "DISPENSADO"
+        if re.search(padrao_dispensa, t_ajustado): return None, "DISPENSADO", None
         
         padrao_prox = r'data\s+(?:da\s+)?proxima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_prox = re.search(padrao_prox, t_ajustado)
         if match_prox:
             dt = pd.to_datetime(match_prox.group(1), dayfirst=True, errors='coerce')
-            return (dt, None) if pd.notna(dt) else (None, "DATA ERRADA")
+            if pd.notna(dt):
+                dt_cal_estimada = dt - relativedelta(years=1)
+                return dt, None, dt_cal_estimada
+            return None, "DATA ERRADA", None
             
         padrao_ult = r'data\s+(?:da\s+)?ultima\s+calibracao\s*:?\s*(\d{2}/\d{2}/\d{2,4})'
         match_ultima = re.search(padrao_ult, t_ajustado)
         if match_ultima:
             dt_ult = pd.to_datetime(match_ultima.group(1), dayfirst=True, errors='coerce')
-            return (dt_ult + relativedelta(years=1), None) if pd.notna(dt_ult) else (None, "DATA ERRADA")
+            if pd.notna(dt_ult):
+                return dt_ult + relativedelta(years=1), None, dt_ult
+            return None, "DATA ERRADA", None
             
-        return None, "SEM DATA"
+        return None, "SEM DATA", None
 
     resultados = df[col_caract].apply(extrair_vencimento)
     df['DATA_CALIBRACAO'] = pd.to_datetime([x[0] for x in resultados], errors='coerce')
     df['ALERTA_DATA'] = [x[1] for x in resultados]
+    df['DATA_ULT_CALIBRACAO'] = pd.to_datetime([x[2] for x in resultados], errors='coerce')
+    df['MES_CALIBRACAO'] = df['DATA_ULT_CALIBRACAO'].dt.strftime('%m/%Y').fillna("")
     df['DATA_STR'] = df['DATA_CALIBRACAO'].dt.strftime('%d/%m/%Y').fillna(df['ALERTA_DATA'])
     hoje = datetime.now()
     
@@ -281,7 +303,14 @@ st.sidebar.markdown("<h4 style='color: white; font-weight: 700; margin-bottom: 2
 st.sidebar.markdown("<div style='display: flex; align-items: center; color: white; font-size: 15px; font-weight: 600; letter-spacing: 1px;'><span style='font-size: 18px; margin-right: 8px;'>🖥️</span> NAVEGAÇÃO</div>", unsafe_allow_html=True)
 st.sidebar.markdown("<hr style='border: none; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 8px; margin-bottom: 12px;'>", unsafe_allow_html=True)
 
-paginas_metro = ["📊 VISÃO GERAL", "✅ EQUIPAMENTOS APTOS", "⏳ PRÓXIMOS DO VENCIMENTO", "🚨 NECESSÁRIO CALIBRAÇÃO", "⚙️ CONFIGURAÇÕES"]
+paginas_metro = [
+    "📊 VISÃO GERAL",
+    "✅ EQUIPAMENTOS APTOS",
+    "⏳ PRÓXIMOS DO VENCIMENTO",
+    "🚨 NECESSÁRIO CALIBRAÇÃO",
+    "🗺️ MAPA DE CALIBRAÇÃO",
+    "⚙️ CONFIGURAÇÕES"
+]
 idx = paginas_metro.index(st.session_state.pagina_ativa) if st.session_state.pagina_ativa in paginas_metro else 0
 escolha = st.sidebar.radio("Navegacao Principal", paginas_metro, index=idx, label_visibility="collapsed")
 
@@ -330,7 +359,7 @@ if menu == "📊 VISÃO GERAL":
     with c3: render_mini_kpi("Calibração. Instrumentos", qtd_instrumentos, "vencido-kpi")
     with c4: render_mini_kpi("Calibração. Içamento", qtd_icamento, "vencido-kpi")
     
-    st.dataframe(df.drop(columns=['DATA_CALIBRACAO'], errors='ignore'), use_container_width=True)
+    st.dataframe(df.drop(columns=['DATA_CALIBRACAO', 'DATA_ULT_CALIBRACAO'], errors='ignore'), use_container_width=True)
     
     with st.expander("🔍 Auditoria de Segurança: Verificar possíveis falsos negativos"):
         possiveis_erros = df[(df['STATUS'] == 'VENCIDO') & (df['ALERTA_DATA'] == 'SEM DATA') & (df["Características"].astype(str).str.contains(r'\d{2}/\d{2}', na=False))]
@@ -481,6 +510,147 @@ elif menu == "🚨 NECESSÁRIO CALIBRAÇÃO":
                 <div style="font-size: 12px; font-weight: 700; text-align: center; color: {cor_data};">{data_exibicao}</div>
             </div>"""
             st.markdown(html_card, unsafe_allow_html=True)
+
+elif menu == "🗺️ MAPA DE CALIBRAÇÃO":
+    st.markdown("### 🗺️ Mapa de Calibração — Análise de Certificados")
+    st.write("Selecione o mês da calibração para acompanhar e gerenciar a análise crítica dos certificados emitidos.")
+
+    # Considera instrumentos de medição (exclui equipamentos de içamento) com data de calibração válida
+    df_inst = df[
+        (~df[col_familia].astype(str).str.contains('IÇAMENTO|ICAMENTO', case=False, na=False)) &
+        (df['MES_CALIBRACAO'] != "")
+    ].copy()
+
+    mes_atual_str = datetime.now().strftime('%m/%Y')
+    meses_base = df_inst['MES_CALIBRACAO'].unique().tolist()
+    if mes_atual_str not in meses_base:
+        meses_base.append(mes_atual_str)
+
+    meses_ordenados = sorted(
+        meses_base,
+        key=lambda m: datetime.strptime(m, "%m/%Y"),
+        reverse=True
+    )
+
+    c_mes, c_status, c_busca = st.columns([2, 2, 3])
+    with c_mes:
+        mes_selecionado = st.selectbox("📅 Mês da Calibração:", meses_ordenados, index=0, key="mapa_mes_sel")
+    with c_status:
+        filtro_status_cert = st.selectbox(
+            "📌 Status da Análise:",
+            ["Todos", "Pendente", "Aprovado", "Reprovado"],
+            key="mapa_status_sel"
+        )
+    with c_busca:
+        busca_cert = st.text_input("🔎 Buscar por Nome ou Código:", key="mapa_busca_txt")
+
+    df_mes = df_inst[df_inst['MES_CALIBRACAO'] == mes_selecionado].copy()
+
+    def obter_registro_cert(row):
+        cod_item = str(row.get('Código', '')).strip()
+        data_cal_str = row['DATA_ULT_CALIBRACAO'].strftime('%d/%m/%Y') if pd.notna(row.get('DATA_ULT_CALIBRACAO')) else ""
+        chave_item = f"{cod_item}|{data_cal_str}" if cod_item else str(row.name)
+        reg = st.session_state.analises_certificados.get(chave_item, {})
+        return chave_item, {
+            "status": reg.get("status", "Pendente"),
+            "observacao": reg.get("observacao", ""),
+            "atualizado_em": reg.get("atualizado_em", "-")
+        }
+
+    chaves_e_regs = [obter_registro_cert(r) for _, r in df_mes.iterrows()]
+    df_mes['_CHAVE_CERT'] = [x[0] for x in chaves_e_regs]
+    df_mes['_STATUS_CERT'] = [x[1]['status'] for x in chaves_e_regs]
+    df_mes['_OBS_CERT'] = [x[1]['observacao'] for x in chaves_e_regs]
+    df_mes['_ATUALIZADO_CERT'] = [x[1]['atualizado_em'] for x in chaves_e_regs]
+
+    qtd_mes_total = len(df_mes)
+    qtd_pendente = len(df_mes[df_mes['_STATUS_CERT'] == "Pendente"])
+    qtd_aprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Aprovado"])
+    qtd_reprovado = len(df_mes[df_mes['_STATUS_CERT'] == "Reprovado"])
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1: render_mini_kpi(f"Calibrados em {mes_selecionado}", qtd_mes_total, "mapa-kpi")
+    with k2: render_mini_kpi("Pendentes", qtd_pendente, "proximo-kpi")
+    with k3: render_mini_kpi("Aprovados", qtd_aprovado, "apto-kpi")
+    with k4: render_mini_kpi("Reprovados", qtd_reprovado, "vencido-kpi")
+
+    st.markdown("---")
+
+    df_view = df_mes.copy()
+    if filtro_status_cert != "Todos":
+        df_view = df_view[df_view['_STATUS_CERT'] == filtro_status_cert]
+
+    col_desc = 'Descrição' if 'Descrição' in df_view.columns else ('DESCRICAO' if 'DESCRICAO' in df_view.columns else None)
+    col_cod = 'Código' if 'Código' in df_view.columns else ('CODIGO' if 'CODIGO' in df_view.columns else None)
+
+    if busca_cert:
+        termo = busca_cert.strip()
+        mask_desc = df_view[col_desc].astype(str).str.contains(termo, case=False, na=False) if col_desc else False
+        mask_cod = df_view[col_cod].astype(str).str.contains(termo, case=False, na=False) if col_cod else False
+        df_view = df_view[mask_desc | mask_cod]
+
+    if df_view.empty:
+        st.info(f"Nenhum instrumento encontrado para **{mes_selecionado}** com os filtros atuais.")
+    else:
+        opcoes_status = ["Pendente", "Aprovado", "Reprovado"]
+        for i, (idx, row) in enumerate(df_view.iterrows()):
+            desc = str(row.get('Descrição', 'N/I'))
+            cod = str(row.get('Código', 'N/I'))
+            chave_cert = row['_CHAVE_CERT']
+            status_atual = row['_STATUS_CERT']
+            obs_atual = row['_OBS_CERT']
+            atualizado_em = row['_ATUALIZADO_CERT']
+            data_cal_exib = row['DATA_ULT_CALIBRACAO'].strftime('%d/%m/%Y') if pd.notna(row.get('DATA_ULT_CALIBRACAO')) else "N/I"
+            venc_exib = str(row.get('DATA_STR', 'N/I'))
+
+            if status_atual == "Aprovado":
+                cor_borda = "#2ecc71"
+                badge_cor = "badge-apto"
+            elif status_atual == "Reprovado":
+                cor_borda = "#ff4b4b"
+                badge_cor = "badge-vencido"
+            else:
+                cor_borda = "#F1C40F"
+                badge_cor = "badge-proximo"
+
+            with st.container():
+                st.markdown(f"""
+                <div style="background-color:#112240; border-left:5px solid {cor_borda}; border-radius:10px; padding:14px 18px; margin-bottom:8px; position:relative;">
+                    <span class="badge-status {badge_cor}" style="top:-10px; left:90px;">{status_atual}</span>
+                    <div style="font-size:15px; font-weight:800; color:#ffffff; margin-top:4px;">{desc} <span style="color:#9099b2; font-weight:600;">({cod})</span></div>
+                    <div style="font-size:12px; color:#b0b4c4; margin-top:4px;">
+                        🛠️ Calibração: <b>{data_cal_exib}</b> &nbsp;|&nbsp; 📅 Vencimento: <b>{venc_exib}</b> &nbsp;|&nbsp; 🕒 Atualizado: <b>{atualizado_em}</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                c_sel, c_obs, c_btn = st.columns([2, 4, 1])
+                idx_st = opcoes_status.index(status_atual) if status_atual in opcoes_status else 0
+                novo_status = c_sel.selectbox(
+                    "Status do certificado",
+                    opcoes_status,
+                    index=idx_st,
+                    key=f"cert_st_{mes_selecionado}_{idx}",
+                    label_visibility="collapsed"
+                )
+                nova_obs = c_obs.text_input(
+                    "Nº do certificado / observação da análise",
+                    value=obs_atual,
+                    placeholder="Ex: Cert. 1234/2026 - Aprovado conforme critério...",
+                    key=f"cert_obs_{mes_selecionado}_{idx}",
+                    label_visibility="collapsed"
+                )
+                if c_btn.button("💾 Salvar", key=f"cert_save_{mes_selecionado}_{idx}", use_container_width=True):
+                    st.session_state.analises_certificados[chave_cert] = {
+                        "status": novo_status,
+                        "observacao": nova_obs.strip(),
+                        "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+                    }
+                    salvar_analises_certificados(st.session_state.analises_certificados)
+                    st.success(f"Análise de {cod} salva como {novo_status}.")
+                    st.rerun()
+
+                st.markdown("<div style='margin-bottom:14px;'></div>", unsafe_allow_html=True)
 
 elif menu == "⚙️ CONFIGURAÇÕES":
     st.markdown("### ⚙️ Gestão de E-mails para Alertas")
